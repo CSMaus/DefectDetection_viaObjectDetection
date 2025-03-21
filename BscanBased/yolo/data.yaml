@@ -1,0 +1,8 @@
+# yolo_data/data.yaml
+
+train: data0321/images/train
+val: data0321/images/val
+# yolo_data/images/val
+
+nc: 1         # number of classes = 1
+names: ['delamination']  # single class name

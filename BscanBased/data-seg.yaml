@@ -1,0 +1,5 @@
+train: data-seg/images/train
+val: data-seg/images/val
+test: # test images (optional)
+names:
+  0: defect

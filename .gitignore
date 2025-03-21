@@ -1,0 +1,15 @@
+/BscanBased/.idea
+/BscanBased/787-226_03_Ch-0_1part
+/BscanBased/787-226_03_Ch-0_2part
+/BscanBased/dataset
+/BscanBased/datasets
+/BscanBased/yolo/datasets
+/BscanBased/yolo9c-seg
+/BscanBased/yolo_seg_data
+/signals/.idea
+/BscanBased/data_with_bbox
+/BscanBased/yolo/bscan_yolov5_run2
+/BscanBased/yolo/bscan_yolov5_run3
+*.pt
+/BscanBased/yolo/yolo11n_0321
+/signals/models
