@@ -13,3 +13,4 @@
 *.pt
 /BscanBased/yolo/yolo11n_0321
 /signals/models
+/BscanBased/predictions

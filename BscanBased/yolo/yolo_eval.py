@@ -8,9 +8,13 @@ def main():
     name = "run/weights/best.pt"
     model_path = os.path.join(project, name)  # project,"name.pt")
     model = YOLO(model_path)
-    results = model.predict("787-225_02_Ch-0_107.png")
-    # results = model.predict("787-225_01_Ch-0_51.png")
-    # results = model.predict("787-225_01_Ch-0_95.png")
+    img_name = "55.png"
+    # img_name = "787-225_02_Ch-0_107.png"
+    # img_name = "787-225_01_Ch-0_102.png"
+    # img_name = "787-226_03_Ch-0_81.png"
+    # img_name = "787-225_01_Ch-0_51.png"
+    # img_name = "787-225_01_Ch-0_95.png"
+    results = model.predict(img_name)
     res = results[0]
 
     '''boxes = res.boxes
