@@ -43,6 +43,9 @@ def load_and_predict_probsOnly(model_path, signal_set_path, num_signals_per_set,
     with torch.no_grad():
         outputs = model(signal_tensor)
 
+    # bcs in training applied sigmoid in losses in training loop 
+    outputs = torch.sigmoid(outputs)
+
     return outputs.squeeze().tolist()
 
 def plot_predictions(defect_probs, defect_starts=None, defect_ends=None):

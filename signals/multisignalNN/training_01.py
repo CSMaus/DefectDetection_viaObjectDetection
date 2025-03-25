@@ -106,7 +106,7 @@ class SignalDataset(Dataset):
 
 
 signal_length = 320
-num_epochs = 30
+num_epochs = 25
 hidden_sizes = [128, 64, 32]
 num_heads = 4
 
