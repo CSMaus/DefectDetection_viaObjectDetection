@@ -51,14 +51,19 @@ class SignalDataset(Dataset):
             signals = []
             labels = []
             signal_files = sorted([f for f in os.listdir(set_dir) if f.endswith('.txt')],
-                                  key=lambda x: int(round(float(x.split('_')[0]))))  # it was 1, but now [1] is type of defect
+                                  key=lambda x: int(round(float(x.split('_')[0]))))  # [1] is type of defect
+
             for filename in signal_files[:num_signals_per_set]:
                 file_path = os.path.join(set_dir, filename)
                 signal = np.loadtxt(file_path)
                 signals.append(signal)
-                if 'Health' in filename:
+                defect_name = filename.split('_')[1]
+                # if 'Health' in filename:
+                if defect_name == 'Health':
                     labels.append(0.0)
+                    defect_position = [0,0]
                 else:
+                    defect_position = [filename.split('.')[0].split('_')[2].split('-')[0], filename.split('.')[0].split('_')[2].split('-')[1]]
                     labels.append(1.0)
 
             self.signal_sets.append(np.array(signals, dtype=np.float32))

@@ -151,7 +151,6 @@ def adjust_annotations(annot, beam_lims, size):
             defect["bbox"][0] = int(round(beam_s - beam_s*(defect["bbox"][0] - beam_start)/beam_len))
             defect["bbox"][1] = int(round(beam_s - beam_s*((defect["bbox"][1] - beam_start)/beam_len)))
 
-
             defect["bbox"][2] = int(round(defect["bbox"][2]* depth_s))
             defect["bbox"][3] = int(round(defect["bbox"][3] * depth_s))
 
@@ -165,42 +164,14 @@ def save_seq_as_images(seq, nn_ds_folder_file):
         img_path = os.path.join(nn_ds_folder_file, f'{img_name}.png')
         cv2.imwrite(img_path, img)
 
-ds_folder = "D:/DataSets/!0_0NaWooDS/2025_DS/"
+ds_folder = "D:/DataSets/!0_0NaWooDS/2025_DS/2BottomRef/"
 
-nn_ds_folder = "dataset/"
+nn_ds_folder = "dataset/double_bottom/"
 file_folders = os.listdir(ds_folder)
 annotations = {}
 num_saved_files = 0
 
-
-_file_folder_ = "787-404_07_Ch-0"
-def single_file_imgs_processing(ff):
-    s, a, bs = get_datafile_sequences(ds_folder, ff)
-    nn_ds_ff = os.path.join(nn_ds_folder, ff)
-    if not os.path.exists(nn_ds_ff):
-        os.makedirs(nn_ds_ff)
-
-    save_seq_as_images(s, nn_ds_ff)
-    a = adjust_annotations(a, bs, (320, 320))
-    annotations[ff] = a
-    with open("annotations_single_file.json", "w") as f:
-        json.dump(annotations, f, indent=2)
-
-
-
-single_file_imgs_processing(_file_folder_)
-sys.exit()
-# test!!!
-# this file has intersected defects. One is in the bottom (real), one is in the middle (artificially manufactured)
-# so the problems appears in this data processing
-# file_folder = "787-404_07_Ch-0"
-# file_folder_path = os.path.join(ds_folder, file_folder)
-# seq, ann = get_datafile_sequences(file_folder_path)
-# sys.exit()
-# for file_folder in file_folders:
-
 # maybe later better to prepare all this data in c# wpf app
-# for file_folder in file_folders:
 for file_folder in tqdm(file_folders, desc="Processing", unit="folder", bar_format="{l_bar}{bar} {n_fmt}/{total_fmt} ({percentage:.1f}%)"):
     # file_folder_path = os.path.join(ds_folder, file_folder)
     seq, ann, blims = get_datafile_sequences(ds_folder, file_folder)
@@ -225,5 +196,23 @@ for file_folder in tqdm(file_folders, desc="Processing", unit="folder", bar_form
 with open("annotations.json", "w") as f:
     json.dump(annotations, f, indent=2)
 
+sys.exit()
 
+_file_folder_ = "787-404_07_Ch-0"
+def single_file_imgs_processing(ff):
+    s, a, bs = get_datafile_sequences(ds_folder, ff)
+    nn_ds_ff = os.path.join(nn_ds_folder, ff)
+    if not os.path.exists(nn_ds_ff):
+        os.makedirs(nn_ds_ff)
+
+    save_seq_as_images(s, nn_ds_ff)
+    a = adjust_annotations(a, bs, (320, 320))
+    annotations[ff] = a
+    with open("annotations_single_file.json", "w") as f:
+        json.dump(annotations, f, indent=2)
+
+
+
+single_file_imgs_processing(_file_folder_)
+sys.exit()
 

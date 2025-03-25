@@ -27,7 +27,9 @@ class SignalDataset(Dataset):
                 file_path = os.path.join(set_dir, filename)
                 signal = np.loadtxt(file_path)
                 signals.append(signal)
-                if 'Health' in filename:
+                defect_name = filename.split('_')[1]
+                # if 'Health' in filename:
+                if defect_name == 'Health':
                     labels.append(0.0)
                 else:
                     labels.append(1.0)
