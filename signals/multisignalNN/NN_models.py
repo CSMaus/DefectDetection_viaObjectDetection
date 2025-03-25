@@ -2,7 +2,6 @@ import torch.nn as nn
 import torch
 
 
-
 class RelativePositionEncoding(nn.Module):
     def __init__(self, max_len, d_model):
         super().__init__()
@@ -65,15 +64,15 @@ class MultiSignalClassifier(nn.Module):
         self.position_encoding = RelativePositionEncoding(max_len=300, d_model=hidden_sizes[1])
         self.transformer_encoder = TransformerEncoder(hidden_sizes[1], num_heads, hidden_sizes[2])
 
-        self.classifier = nn.Linear(hidden_sizes[1], 3)  # No activation here
+        # self.classifier = nn.Linear(hidden_sizes[1], 3)  # No activation here
 
         # Updated classifier to output [defect_probability, defect_start, defect_end]
-        '''self.classifier = nn.Sequential(
+        self.classifier = nn.Sequential(
             nn.Linear(hidden_sizes[1], hidden_sizes[2]),
             nn.ReLU(),
-            nn.Linear(hidden_sizes[2], 3),  # 3 outputs instead of 1
-            nn.Sigmoid()  # Ensures outputs are in range [0,1]
-        )'''
+            nn.Linear(hidden_sizes[2], 1),  # to make 3 outputs - place "3" the end instead of 1
+            # nn.Sigmoid()  # Ensures outputs are in range [0,1]
+        )
 
     """def shit_forward(self, x):
         batch_size, num_signals, signal_length = x.size()
@@ -123,12 +122,15 @@ class MultiSignalClassifier(nn.Module):
         shared_out = self.transformer_encoder(shared_out)
 
         outputs = self.classifier(shared_out)
+        defect_prob = outputs
 
-        defect_prob = torch.sigmoid(outputs[:, :, 0])
-        defect_start = torch.tanh(outputs[:, :, 1]) * 0.5 + 0.5
-        defect_end = torch.tanh(outputs[:, :, 2]) * 0.5 + 0.5
+        # this is for 3 output predictions
+        # defect_prob = torch.sigmoid(outputs[:, :, 0])
+        # defect_start = torch.tanh(outputs[:, :, 1]) * 0.5 + 0.5
+        # defect_end = torch.tanh(outputs[:, :, 2]) * 0.5 + 0.5
+        # return defect_prob, defect_start, defect_end
 
-        return defect_prob, defect_start, defect_end
+        return defect_prob.squeeze(-1)
 
 
 
