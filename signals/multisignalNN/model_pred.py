@@ -43,7 +43,7 @@ def load_and_predict_probsOnly(model_path, signal_set_path, num_signals_per_set,
     with torch.no_grad():
         outputs = model(signal_tensor)
 
-    # bcs in training applied sigmoid in losses in training loop 
+    # bcs in training applied sigmoid in losses in training loop
     outputs = torch.sigmoid(outputs)
 
     return outputs.squeeze().tolist()
@@ -51,9 +51,9 @@ def load_and_predict_probsOnly(model_path, signal_set_path, num_signals_per_set,
 def plot_predictions(defect_probs, defect_starts=None, defect_ends=None):
     plt.figure(figsize=(14, 6))
     plt.plot(defect_probs * 100, marker='o', linestyle='-', color='blue', label='Defect Probability (%)')
-    if defect_starts!= None:
+    if defect_starts is not None:
         plt.plot(defect_starts * 100, marker='x', linestyle='--', color='green', label='Defect Start Position (%)')
-    if defect_ends != None:
+    if defect_ends is not None:
         plt.plot(defect_ends * 100, marker='x', linestyle='--', color='red', label='Defect End Position (%)')
     plt.xlabel('Signal Index', fontsize=12)
     plt.ylabel('Value (%)', fontsize=12)
@@ -68,19 +68,18 @@ signal_length = 320
 num_signals_per_set = 170
 #$ signal_set_path = 'D:/DataSets/!!NaWooDS_toTest/WOT-D456_A4_002AscanIdx_38/'
 signal_set_path = 'D:/DataSets/!0_0NaWooDS/2025_DS/train/787-225_01_Ch-0/BeamIdx_43/'
-attempt = "004"
+attempt = "005"
 model_path = f'models/{attempt}-MultiSignalClassifier_modelOPD.pth'
 
 hidden_sizes = [128, 64, 32]
 num_heads = 4
-# defect_probs, defect_starts, defect_ends = load_and_predict(model_path, signal_set_path, num_signals_per_set, signal_length, device)
-defect_probs = load_and_predict_probsOnly(
-    model_path, signal_set_path, num_signals_per_set, signal_length, device, hidden_sizes, num_heads)
+defect_probs, defect_starts, defect_ends = load_and_predict(model_path, signal_set_path, num_signals_per_set, signal_length, device)
+# defect_probs = load_and_predict_probsOnly(model_path, signal_set_path, num_signals_per_set, signal_length, device, hidden_sizes, num_heads)
 
 
-# for i, (prob, start, end) in enumerate(zip(defect_probs, defect_starts, defect_ends)):
-for i, prob in enumerate(defect_probs):
+for i, (prob, start, end) in enumerate(zip(defect_probs, defect_starts, defect_ends)):
+# for i, prob in enumerate(defect_probs):
     status = 'Defective' if prob > 0.5 else 'Healthy'
-    print(f"Signal {i}: {status} | Confidence: {prob*100:.2f}%")
+    print(f"Signal {i}: {status} | Confidence: {prob*100:.2f}% | Start: {start:.3f} | End: {end:.3f}")
 
-plot_predictions(defect_probs)
+plot_predictions(defect_probs, defect_starts, defect_ends)

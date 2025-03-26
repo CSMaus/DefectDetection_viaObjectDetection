@@ -33,11 +33,16 @@ import torch.nn.functional as F
 from NN_models import RelativePositionEncoding, TransformerEncoder, MultiSignalClassifier
 
 
+
+
 # Signal Dataset Class with Automatic Sequence Length Calculation
 class SignalDataset(Dataset):
-    def __init__(self, root_dir):
+    def __init__(self, root_dir, root_dir2):
         self.root_dir = root_dir
+        self.root_dir2 = root_dir2
         self.original_datafiles_folders = [os.path.join(root_dir, d) for d in os.listdir(root_dir)]
+        self.additional_list = [os.path.join(root_dir2, d) for d in os.listdir(root_dir2)]
+        self.original_datafiles_folders.extend(self.additional_list)
         #  if os.path.isdir(os.path.join(root_dir, d))
         self.signal_sets = []
         self.labels = []
@@ -106,7 +111,7 @@ class SignalDataset(Dataset):
 
 
 signal_length = 320
-num_epochs = 25
+num_epochs = 40
 hidden_sizes = [128, 64, 32]
 num_heads = 4
 
@@ -116,15 +121,15 @@ model = MultiSignalClassifier(signal_length=signal_length, hidden_sizes=hidden_s
 print(f"Using device: {device}")
 
 ds_path = "D:/DataSets/!0_0NaWooDS/2025_DS/2BottomRef/"  # 2BottomRef/"  # train
-dataset = SignalDataset(ds_path)
-dataloader = DataLoader(dataset, batch_size=4, shuffle=False)  # with true need to reset number of samples
+ds_path2 = "D:/DataSets/!0_0NaWooDS/2025_DS/1BottomRef/"  # 2BottomRef/"  # train
+dataset = SignalDataset(ds_path, ds_path2)
+dataloader = DataLoader(dataset, batch_size=4, shuffle=True)  # with true need to reset number of samples
 print("Number of signal_sequences: ", len(dataset.labels))
 print("Sequence len was set to: ", dataset.num_signals_per_set)
 
 
-weights = torch.tensor([1.0, 10.0]).to(device)
 criterion = nn.BCELoss()
-optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
+optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 
 
 history = {'epochs': [], 'train_loss': [], 'train_accuracy': []}
@@ -133,20 +138,20 @@ for epoch in range(num_epochs):
     total_correct = 0
     for signals, labels, defect_positions in dataloader:
         signals, labels, defect_positions = signals.to(device), labels.to(device), defect_positions.to(device)
-        # defect_prob_pred, defect_start_pred, defect_end_pred = model(signals)
-        defect_prob_pred = model(signals)
+        defect_prob_pred, defect_start_pred, defect_end_pred = model(signals)
+        # defect_prob_pred = model(signals)
 
-        loss_classification = criterion(torch.sigmoid(defect_prob_pred), labels.float())
-        # loss_classification = criterion(defect_prob_pred, labels)
+        # loss_classification = criterion(torch.sigmoid(defect_prob_pred), labels.float())
+        loss_classification = criterion(defect_prob_pred, labels)
         '''loss_start = F.mse_loss(defect_start_pred, defect_positions[:, :, 0])
         loss_end = F.mse_loss(defect_end_pred, defect_positions[:, :, 1])'''
 
-        # defect_start_pred = torch.clamp(defect_start_pred, 0, 1)
-        # defect_end_pred = torch.clamp(defect_end_pred, 0, 1)
-        # loss_start = F.mse_loss(defect_start_pred, defect_positions[:, :, 0])
-        # loss_end = F.mse_loss(defect_end_pred, defect_positions[:, :, 1])
+        defect_start_pred = torch.clamp(defect_start_pred, 0, 1)
+        defect_end_pred = torch.clamp(defect_end_pred, 0, 1)
+        loss_start = F.mse_loss(defect_start_pred, defect_positions[:, :, 0])
+        loss_end = F.mse_loss(defect_end_pred, defect_positions[:, :, 1])
 
-        loss = loss_classification # + 0.5 * (loss_start + loss_end)
+        loss = loss_classification + 0.5 * (loss_start + loss_end)
 
         optimizer.zero_grad()
         loss.backward()
@@ -166,7 +171,8 @@ for epoch in range(num_epochs):
 
 
 modelname = "OPD"
-attempt = "004"  # "test"  "004"
+attempt = "006"  # "test"  "004"
+print(f"Trained model for {num_epochs} epochs, attempt: {attempt}")
 torch.save(model.state_dict(), f'models/{attempt}-MultiSignalClassifier_model{modelname}.pth')
 
 scripted_model = torch.jit.script(model)
