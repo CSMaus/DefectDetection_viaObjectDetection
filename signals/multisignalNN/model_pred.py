@@ -1,4 +1,4 @@
-from NN_models import MultiSignalClassifier
+from NN_models import MultiSignalClassifier, MultiSignalClassifier_N
 import torch
 import numpy as np
 import os
@@ -7,7 +7,8 @@ from matplotlib import pyplot as plt
 
 def load_and_predict(model_path, signal_set_path, num_signals_per_set, signal_length, device, _hidden_sizes=[128, 64, 32], heads=4):
     # model = MultiSignalClassifier(signal_length, hidden_sizes=[128, 64, 32]).to(device)
-    model = MultiSignalClassifier(signal_length=signal_length, hidden_sizes=_hidden_sizes, num_heads=heads).to(device)
+    # model = MultiSignalClassifier(signal_length=signal_length, hidden_sizes=_hidden_sizes, num_heads=heads).to(device)
+    model = MultiSignalClassifier_N(signal_length=signal_length, hidden_sizes=_hidden_sizes, num_heads=heads).to(device)
     model.load_state_dict(torch.load(model_path, map_location=device))
     model.eval()
 
@@ -66,13 +67,14 @@ def plot_predictions(defect_probs, defect_starts=None, defect_ends=None):
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 signal_length = 320
 num_signals_per_set = 170
-#$ signal_set_path = 'D:/DataSets/!!NaWooDS_toTest/WOT-D456_A4_002AscanIdx_38/'
-signal_set_path = 'D:/DataSets/!0_0NaWooDS/2025_DS/train/787-225_01_Ch-0/BeamIdx_43/'
-attempt = "005"
-model_path = f'models/{attempt}-MultiSignalClassifier_modelOPD.pth'
+
+# signal_set_path = 'D:/DataSets/!0_0NaWooDS/2025_DS/train/787-225_01_Ch-0/BeamIdx_43/'
+signal_set_path = 'D:/DataSets/!0_0NaWooDS/2025_DS/2BottomRef  - 787-404_07_Ch-0/BeamIdx_18/'
+attempt = "008"
+model_path = f'models/{attempt}-_N-MultiSignalClassifier_modelOPD.pth'
 
 hidden_sizes = [128, 64, 32]
-num_heads = 4
+num_heads = 8 # 4
 defect_probs, defect_starts, defect_ends = load_and_predict(model_path, signal_set_path, num_signals_per_set, signal_length, device)
 # defect_probs = load_and_predict_probsOnly(model_path, signal_set_path, num_signals_per_set, signal_length, device, hidden_sizes, num_heads)
 
@@ -82,4 +84,5 @@ for i, (prob, start, end) in enumerate(zip(defect_probs, defect_starts, defect_e
     status = 'Defective' if prob > 0.5 else 'Healthy'
     print(f"Signal {i}: {status} | Confidence: {prob*100:.2f}% | Start: {start:.3f} | End: {end:.3f}")
 
+print(f"model predictions for attempt: {attempt}, model _N")
 plot_predictions(defect_probs, defect_starts, defect_ends)

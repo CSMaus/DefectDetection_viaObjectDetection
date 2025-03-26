@@ -30,9 +30,9 @@ import numpy as np
 from torch.utils.data import DataLoader, Dataset
 import os
 import torch.nn.functional as F
-from NN_models import RelativePositionEncoding, TransformerEncoder, MultiSignalClassifier
+from NN_models import MultiSignalClassifier_N
 
-
+# MultiSignalClassifier
 
 
 # Signal Dataset Class with Automatic Sequence Length Calculation
@@ -40,9 +40,9 @@ class SignalDataset(Dataset):
     def __init__(self, root_dir, root_dir2):
         self.root_dir = root_dir
         self.root_dir2 = root_dir2
-        self.original_datafiles_folders = [os.path.join(root_dir, d) for d in os.listdir(root_dir)]
         self.additional_list = [os.path.join(root_dir2, d) for d in os.listdir(root_dir2)]
-        self.original_datafiles_folders.extend(self.additional_list)
+        self.original_datafiles_folders = [os.path.join(root_dir, d) for d in os.listdir(root_dir)]
+        self.original_datafiles_folders = [*self.original_datafiles_folders, *self.additional_list]
         #  if os.path.isdir(os.path.join(root_dir, d))
         self.signal_sets = []
         self.labels = []
@@ -111,14 +111,9 @@ class SignalDataset(Dataset):
 
 
 signal_length = 320
-num_epochs = 40
+num_epochs = 90
 hidden_sizes = [128, 64, 32]
-num_heads = 4
-
-
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-model = MultiSignalClassifier(signal_length=signal_length, hidden_sizes=hidden_sizes, num_heads=num_heads).to(device)
-print(f"Using device: {device}")
+num_heads = 9
 
 ds_path = "D:/DataSets/!0_0NaWooDS/2025_DS/2BottomRef/"  # 2BottomRef/"  # train
 ds_path2 = "D:/DataSets/!0_0NaWooDS/2025_DS/1BottomRef/"  # 2BottomRef/"  # train
@@ -127,6 +122,9 @@ dataloader = DataLoader(dataset, batch_size=4, shuffle=True)  # with true need t
 print("Number of signal_sequences: ", len(dataset.labels))
 print("Sequence len was set to: ", dataset.num_signals_per_set)
 
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+model = MultiSignalClassifier_N(signal_length=signal_length, hidden_sizes=hidden_sizes, num_heads=num_heads).to(device)
+print(f"Using device: {device}")
 
 criterion = nn.BCELoss()
 optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
@@ -171,14 +169,14 @@ for epoch in range(num_epochs):
 
 
 modelname = "OPD"
-attempt = "006"  # "test"  "004"
+attempt = "008"  # "test"  "004"
 print(f"Trained model for {num_epochs} epochs, attempt: {attempt}")
-torch.save(model.state_dict(), f'models/{attempt}-MultiSignalClassifier_model{modelname}.pth')
+torch.save(model.state_dict(), f'models/{attempt}-_N-MultiSignalClassifier_model{modelname}.pth')
 
 scripted_model = torch.jit.script(model)
-scripted_model.save(f'models/{attempt}-MultiSignalClassifier_model{modelname}.pt')
+scripted_model.save(f'models/{attempt}-_N-MultiSignalClassifier_model{modelname}.pt')
 
-with open(f'histories/{attempt}-MultiSignalClassifier_model{modelname}-training_history.json', 'w') as f:
+with open(f'histories/{attempt}-_N-MultiSignalClassifier_model{modelname}-training_history.json', 'w') as f:
     json.dump(history, f)
 
 

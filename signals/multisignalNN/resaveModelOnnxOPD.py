@@ -1,4 +1,4 @@
-from NN_models import MultiSignalClassifier
+from NN_models import MultiSignalClassifier, MultiSignalClassifier_N
 import torch
 
 def export_model_to_onnx(model, model_path, onnx_model_path, signal_length, hidden_sizes, num_heads=4):
@@ -26,9 +26,11 @@ def export_model_to_onnx(model, model_path, onnx_model_path, signal_length, hidd
 
 signal_length = 320  # 360  # 320
 hidden_sizes = [128, 64, 32]
+num_heads = 8  # 4
 modelname = "OPD"  # "FPD"
-attempt = "002"
+attempt = "008"
 
-model = MultiSignalClassifier(signal_length, hidden_sizes)
-export_model_to_onnx(model, f'models/{attempt}-MultiSignalClassifier_model{modelname}.pth',
-                     f'models/{attempt}-MultiSignalClassifier_model{modelname}.onnx', signal_length, hidden_sizes)
+# model = MultiSignalClassifier(signal_length, hidden_sizes)
+model = MultiSignalClassifier_N(signal_length, hidden_sizes, num_heads)
+export_model_to_onnx(model, f'models/{attempt}-_N-MultiSignalClassifier_model{modelname}.pth',
+                     f'models/{attempt}-_N-MultiSignalClassifier_model{modelname}.onnx', signal_length, hidden_sizes)
