@@ -22,6 +22,8 @@ def main(folder_full_path, to_save_path):
             cls_id = int(box.cls)
             print(f"Box {i}: xyxy=({x1:.1f}, {y1:.1f}, {x2:.1f}, {y2:.1f}), conf={conf:.2f}, class={cls_id}")
 
+        # BCS i DID MISTAKE WITH CLASS NAME IN FINETUNING
+        res.names = {0: "FO"}
         plotted = res.plot()
         img_path_tosave = os.path.join(to_save_path, f'{img_name}')
         cv2.imwrite(img_path_tosave, plotted)
@@ -32,9 +34,12 @@ def main(folder_full_path, to_save_path):
 if __name__ == "__main__":
     current_dir = os.path.dirname(os.path.abspath(__file__))
     parent_dir = os.path.dirname(current_dir)
-    to_save_pred_path = os.path.join(parent_dir, "predictions/787-404_07_Ch-0_3.5depth/")
+
+    folder = "787-226_03_Ch-0_1part/"
+    to_save_pred_path = os.path.join(parent_dir, f"predictions/{folder}")# 787-404_07_Ch-0_3.5depth/")
     # folder where images for prediction are stored
-    folder_path = os.path.join(parent_dir, "dataset/787-404_07_Ch-0/")
+    # folder_path = os.path.join(parent_dir, "dataset/787-404_07_Ch-0/")
+    folder_path = os.path.join(parent_dir, folder)
 
     if not os.path.exists(to_save_pred_path):
         os.makedirs(to_save_pred_path)
