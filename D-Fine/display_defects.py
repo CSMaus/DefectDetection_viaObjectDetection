@@ -10,8 +10,8 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtGui import QPixmap, QPainter, QPen, QColor, QImage, QFont
 from PyQt6.QtCore import Qt
 
-DATASET_DIR = "dataset/-WOT-2025_05_01"
-ANNOTATIONS_FILE = "annotations-WOT.json"
+DATASET_DIR = "dataset/WOT-20250501"
+ANNOTATIONS_FILE = "annotations-WOT-20250501.json"
 IMAGE_SIZE = (320, 320)
 
 
@@ -55,6 +55,7 @@ class ImageViewer(QWidget):
             for img_file in sorted(os.listdir(folder_path), key=lambda x: int(x.split('.')[0])):
                 if img_file.endswith(".png"):
                     self.images.append((folder, img_file))
+        print(len(self.images))
 
     def update_image(self, idx):
         folder, img_name = self.images[idx]

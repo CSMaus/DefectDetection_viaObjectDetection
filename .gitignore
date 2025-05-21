@@ -20,3 +20,5 @@
 /D-Fine/.idea
 /D-Fine/dataset
 *.json
+*.xlsx
+.DS_Store

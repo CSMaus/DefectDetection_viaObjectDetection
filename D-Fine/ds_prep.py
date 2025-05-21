@@ -1,4 +1,6 @@
 # here take json files and same its as images and annotation for them
+# todo: solve the problem with the fillu zeroes images - how does they appear
+# todo: it might be error of scanning - need to note it in NN training
 import os
 import json
 import numpy as np
@@ -6,10 +8,14 @@ import cv2
 import collections
 from tqdm import tqdm
 
-ds_folder = "D:/DataSets/!0_0NaWooDS/2025_DS/WOT_JSON/"
-nn_ds_folder = "dataset/-WOT-2025_05_01/"
-os.makedirs(nn_ds_folder, exist_ok=True)
-annotation_file_name = "annotations-WOT.json"
+number_false_imgs = 0
+
+# ds_folder = "D:/DataSets/!0_0NaWooDS/2025_DS/WOT_JSON/"
+ds_folder = "WOT-20250521/"
+nn_ds_folder = "dataset/WOT-20250501/"
+if not os.path.exists(nn_ds_folder):
+    os.makedirs(nn_ds_folder)
+annotation_file_name = "annotations-WOT-20250501.json"
 
 def resize_image(img, target_size):
     """bilinear interpolation.
@@ -121,9 +127,15 @@ def adjust_annotations(annot, beam_lims, size):
     return annot
 
 def save_seq_as_images(seq, nn_ds_folder_file):
+    global number_false_imgs
     for img_name in seq.keys():
         img = seq[img_name]
-        img = resize_image(img, (320, 320))
+        try:
+            img = resize_image(img, (320, 320))
+        except Exception as ex:
+            # print(f"Error: {ex} in {nn_ds_folder_file}, {img_name}")
+            number_false_imgs += 1
+            continue
         img = (img * 255).astype(np.uint8)
         img_path = os.path.join(nn_ds_folder_file, f'{img_name}.png')
         cv2.imwrite(img_path, img)
@@ -137,7 +149,7 @@ for json_file in tqdm(json_files, desc="Processing JSON", unit="file"):
     json_path = os.path.join(ds_folder, json_file)
     base_name = os.path.splitext(json_file)[0]
 
-    seq, ann, blims = get_datafile_sequences(ds_folder, json_path)
+    seq, ann, blims = get_datafile_sequences(ds_folder, json_file)
 
     nn_ds_folder_file = os.path.join(nn_ds_folder, base_name)
     if not os.path.exists(nn_ds_folder_file):
@@ -151,4 +163,4 @@ for json_file in tqdm(json_files, desc="Processing JSON", unit="file"):
 with open(annotation_file_name, "w") as f:
     json.dump(annotations, f, indent=2)
 
-
+print("Number of images with values only zeroes is: ", number_false_imgs)
