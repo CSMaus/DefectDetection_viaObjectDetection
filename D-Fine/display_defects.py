@@ -55,7 +55,7 @@ class ImageViewer(QWidget):
             for img_file in sorted(os.listdir(folder_path), key=lambda x: int(x.split('.')[0])):
                 if img_file.endswith(".png"):
                     self.images.append((folder, img_file))
-        print(len(self.images))
+        print("Total number of images is: ", len(self.images))
 
     def update_image(self, idx):
         folder, img_name = self.images[idx]
@@ -87,6 +87,30 @@ class ImageViewer(QWidget):
         painter.end()
         self.image_display.setPixmap(pixmap.scaled(*IMAGE_SIZE, Qt.AspectRatioMode.KeepAspectRatio))
 
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key.Key_P:
+            idx = self.slider.value()
+            folder, img_name = self.images[idx]
+            print(f"{folder}, scan: {img_name}")
+
+            save_dir = os.path.join("bad_samples", folder)
+            if not os.path.exists(save_dir):
+                os.makedirs(save_dir)
+            save_path = os.path.join(save_dir, img_name)
+
+            img_path = os.path.join(DATASET_DIR, folder, img_name)
+            image = cv2.imread(img_path)
+            cv2.imwrite(save_path, image)
+
+        elif event.key() == Qt.Key.Key_Right:
+            idx = self.slider.value()
+            if idx < len(self.images) - 1:
+                self.slider.setValue(idx + 1)
+
+        elif event.key() == Qt.Key.Key_Left:
+            idx = self.slider.value()
+            if idx > 0:
+                self.slider.setValue(idx - 1)
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
