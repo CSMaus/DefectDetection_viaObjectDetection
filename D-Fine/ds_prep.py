@@ -11,11 +11,11 @@ from tqdm import tqdm
 number_false_imgs = 0
 
 # ds_folder = "D:/DataSets/!0_0NaWooDS/2025_DS/WOT_JSON/"
-ds_folder = "WOT-20250521/"
-nn_ds_folder = "dataset/WOT-20250501/"
+ds_folder = "WOT-20250522(auto)"
+nn_ds_folder = f"dataset/{ds_folder}/"
 if not os.path.exists(nn_ds_folder):
     os.makedirs(nn_ds_folder)
-annotation_file_name = "annotations-WOT-20250501.json"
+annotation_file_name = f"annotations-{ds_folder}.json"
 
 def resize_image(img, target_size):
     """bilinear interpolation.

@@ -10,8 +10,9 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtGui import QPixmap, QPainter, QPen, QColor, QImage, QFont
 from PyQt6.QtCore import Qt
 
-DATASET_DIR = "dataset/WOT-20250501"
-ANNOTATIONS_FILE = "annotations-WOT-20250501.json"
+COLLECTION_NAME = "WOT-20250522(auto)"
+DATASET_DIR = f"dataset/{COLLECTION_NAME}"
+ANNOTATIONS_FILE = f"annotations-{COLLECTION_NAME}.json"
 IMAGE_SIZE = (320, 320)
 
 
@@ -100,7 +101,25 @@ class ImageViewer(QWidget):
 
             img_path = os.path.join(DATASET_DIR, folder, img_name)
             image = cv2.imread(img_path)
-            cv2.imwrite(save_path, image)
+            image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+            qimage = QImage(image.data, image.shape[1], image.shape[0], image.strides[0], QImage.Format.Format_RGB888)
+            pixmap = QPixmap.fromImage(qimage)
+            painter = QPainter(pixmap)
+            defects = self.annotations.get(folder, {}).get(img_name, [])
+            pen = QPen(QColor(255, 0, 0), 2)
+            painter.setPen(pen)
+            painter.setFont(QFont("Arial", 10))
+
+            for defect in defects:
+                x1, x2, y1, y2 = defect["bbox"]
+                x = min(x1, x2)
+                y = min(y1, y2)
+                w = abs(x2 - x1)
+                h = abs(y2 - y1)
+                painter.drawRect(x, y, w, h)
+                painter.drawText(x + 2, y - 4, defect["label"])
+            painter.end()
+            pixmap.save(save_path)
 
         elif event.key() == Qt.Key.Key_Right:
             idx = self.slider.value()
