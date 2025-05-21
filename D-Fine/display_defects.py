@@ -1,0 +1,96 @@
+# here is the code to test the correctness of annotations for created b-scan images
+import sys
+import os
+import json
+import cv2
+import numpy as np
+from PyQt6.QtWidgets import (
+    QApplication, QWidget, QLabel, QVBoxLayout, QSlider
+)
+from PyQt6.QtGui import QPixmap, QPainter, QPen, QColor, QImage, QFont
+from PyQt6.QtCore import Qt
+
+DATASET_DIR = "dataset/-WOT-2025_05_01"
+ANNOTATIONS_FILE = "annotations-WOT.json"
+IMAGE_SIZE = (320, 320)  # Update if needed
+
+
+class ImageViewer(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("BBox Viewer")
+
+        self.folder_label = QLabel("Folder:")
+        self.image_label = QLabel("Image:")
+        self.image_display = QLabel()
+        self.slider = QSlider(Qt.Orientation.Horizontal)
+        self.slider.valueChanged.connect(self.update_image)
+
+        layout = QVBoxLayout()
+        layout.addWidget(self.folder_label)
+        layout.addWidget(self.image_label)
+        layout.addWidget(self.image_display)
+        layout.addWidget(self.slider)
+        self.setLayout(layout)
+
+        self.images = []  # List of (folder, image_name)
+        self.annotations = self.load_annotations()
+        self.load_all_images()
+
+        self.slider.setMinimum(0)
+        self.slider.setMaximum(len(self.images) - 1)
+
+        if self.images:
+            self.update_image(0)
+
+    def load_annotations(self):
+        with open(ANNOTATIONS_FILE, 'r') as f:
+            return json.load(f)
+
+    def load_all_images(self):
+        for folder in os.listdir(DATASET_DIR):
+            folder_path = os.path.join(DATASET_DIR, folder)
+            if not os.path.isdir(folder_path):
+                continue
+            for img_file in sorted(os.listdir(folder_path), key=lambda x: int(x.split('.')[0])):
+                if img_file.endswith(".png"):
+                    self.images.append((folder, img_file))
+
+    def update_image(self, idx):
+        folder, img_name = self.images[idx]
+        self.folder_label.setText(f"Folder: {folder}")
+        self.image_label.setText(f"Image: {img_name}")
+
+        img_path = os.path.join(DATASET_DIR, folder, img_name)
+        image = cv2.imread(img_path)
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+
+        qimage = QImage(image.data, image.shape[1], image.shape[0], image.strides[0], QImage.Format.Format_RGB888)
+        pixmap = QPixmap.fromImage(qimage)
+        painter = QPainter(pixmap)
+
+        # Draw bounding boxes and labels
+        defects = self.annotations.get(folder, {}).get(img_name, [])
+        pen = QPen(QColor(255, 0, 0), 2)
+        painter.setPen(pen)
+        painter.setFont(QFont("Arial", 10))
+
+        for defect in defects:
+            x1, x2, y1, y2 = defect["bbox"]
+            x = min(x1, x2)
+            y = min(y1, y2)
+            w = abs(x2 - x1)
+            h = abs(y2 - y1)
+            painter.drawRect(x, y, w, h)
+            painter.drawText(x + 2, y - 4, defect["label"])
+
+        painter.end()
+        self.image_display.setPixmap(pixmap.scaled(*IMAGE_SIZE, Qt.AspectRatioMode.KeepAspectRatio))
+
+
+if __name__ == "__main__":
+    app = QApplication(sys.argv)
+    viewer = ImageViewer()
+    viewer.resize(IMAGE_SIZE[0], IMAGE_SIZE[1] + 80)
+    viewer.show()
+    sys.exit(app.exec())
