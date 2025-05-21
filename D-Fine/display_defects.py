@@ -12,7 +12,7 @@ from PyQt6.QtCore import Qt
 
 DATASET_DIR = "dataset/-WOT-2025_05_01"
 ANNOTATIONS_FILE = "annotations-WOT.json"
-IMAGE_SIZE = (320, 320)  # Update if needed
+IMAGE_SIZE = (320, 320)
 
 
 class ImageViewer(QWidget):
@@ -33,7 +33,7 @@ class ImageViewer(QWidget):
         layout.addWidget(self.slider)
         self.setLayout(layout)
 
-        self.images = []  # List of (folder, image_name)
+        self.images = []  # (folder, image_name)
         self.annotations = self.load_annotations()
         self.load_all_images()
 
@@ -69,7 +69,6 @@ class ImageViewer(QWidget):
         pixmap = QPixmap.fromImage(qimage)
         painter = QPainter(pixmap)
 
-        # Draw bounding boxes and labels
         defects = self.annotations.get(folder, {}).get(img_name, [])
         pen = QPen(QColor(255, 0, 0), 2)
         painter.setPen(pen)
