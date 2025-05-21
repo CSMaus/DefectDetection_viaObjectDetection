@@ -18,3 +18,5 @@
 /signals/multisignalNN/models
 /.idea
 /D-Fine/.idea
+/D-Fine/dataset
+*.json

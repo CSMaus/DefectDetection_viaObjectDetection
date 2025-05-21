@@ -166,7 +166,12 @@ def save_seq_as_images(seq, nn_ds_folder_file):
 
 ds_folder = "D:/DataSets/!0_0NaWooDS/2025_DS/2BottomRef/"
 
-nn_ds_folder = "dataset/double_bottom/"
+
+
+nn_ds_folder = "dataset/-TESTTT/"  # double_bottom
+if not os.path.exists(nn_ds_folder):
+    os.makedirs(nn_ds_folder)
+
 file_folders = os.listdir(ds_folder)
 annotations = {}
 num_saved_files = 0
