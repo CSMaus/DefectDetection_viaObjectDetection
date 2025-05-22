@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 from types import SimpleNamespace
 from transformers.models.d_fine.modeling_d_fine import weighting_function
+from transformers.models.d_fine.modeling_d_fine import distance2bbox
 
 url = 'http://images.cocodataset.org/val2017/000000039769.jpg'
 image = Image.open(requests.get(url, stream=True).raw)
@@ -20,50 +21,35 @@ model = DFineForObjectDetection.from_pretrained("ustc-community/dfine-small-coco
 
 inputs = image_processor(images=image, return_tensors="pt")
 
-'''
-with torch.no_grad():
-    outputs = model.model(**inputs)
-
-# Get feature map before classification and bbox heads - THIS IS CORRECT!!
-features = outputs.last_hidden_state  # shape: (batch_size, num_queries, hidden_dim)
-print("Feature shape:", features.shape)
-'''
 with (torch.no_grad()):
-    outputs = model.model(**inputs)  # model.model.encoder(inputs["pixel_values"])
-    # outputs = model.model(inputs["pixel_values"])
+    outputs = model.model(**inputs)
     features = outputs.last_hidden_state
-    # init_ref = outputs.initial_reference_points  # (B, layers, Nq, 4)
-    # init_ref = outputs.init_reference_points  # (B, Nq, 4)
     print("Feature shape:", features.shape)
 
+class_logits = model.class_embed[-1](features) # (B, num_queries, num_classes)
+bbox_dist   = model.bbox_embed[-1](features) # (B, num_queries, 4*(max_num_bins+1))
 
-'''with torch.no_grad():
-    class_logits = model.class_embed[-1](features)  # shape: (B, N_queries, num_classes)
-    bbox_dist = model.bbox_embed[-1](features)   # shape: (B, N, 4*(max_num_bins+1))
-    print("BBox dist shape ", bbox_dist.shape)
-    # bbox_deltas = model.bbox_embed[-1](features)[..., :4]
+# 2) build the same W(n) vector the decoder used
+project = weighting_function(
+    model.config.max_num_bins,
+    model.model.decoder.up,
+    model.model.decoder.reg_scale,
+)
 
-    # build the W(n) “project” vector exactly as the decoder does
-    project = weighting_function(
-        model.config.max_num_bins,
-        model.model.decoder.up,
-        model.model.decoder.reg_scale,
-    )
-    # decode the 4-bin distributions into real [cx, cy, w, h] coords
-    bbox_deltas_real = model.model.decoder.integral(bbox_dist, project) + init_ref  # (B, Nq, 4)
+# 1) convert distribution → distance offsets
+distances = model.model.decoder.integral(bbox_dist, project)  # (B, num_queries, 4)
 
-'''
-class_logits = outputs.intermediate_logits[:, -1]             # (B, num_queries, num_classes)
-pred_boxes   = outputs.intermediate_reference_points[:, -1]  # (B, num_queries, 4)
+# 2) pull out the layer-0 “new_reference_points” that DFine used as the
+#    anchor for its distance2bbox call
+init_ref   = outputs.initial_reference_points[:, 0]            # (B, num_queries, 4)
 
-# torch.save(features, "extracted_features.pt")
-print("Class logits shape:", class_logits.shape)
-print("BBox deltas shape:", bbox_deltas_real.shape)
+# 3) do exactly what DFineDecoder does under the hood
+bbox_pred  = distance2bbox(init_ref, distances, model.config.reg_scale)
 
 processed_real = image_processor.post_process_object_detection(
-    SimpleNamespace(logits=class_logits, pred_boxes=bbox_deltas_real),
+    SimpleNamespace(logits=class_logits, pred_boxes=bbox_pred),
     target_sizes=torch.tensor([image.size[::-1]]),
-    threshold=0.3
+    threshold=0.3,
 )
 
 print("Image size target", image.size[::-1])
