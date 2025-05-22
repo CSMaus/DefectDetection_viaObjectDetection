@@ -23,3 +23,5 @@
 *.xlsx
 .DS_Store
 /D-Fine/bad_samples
+/D-Fine/ds_manipulations/bad_samples
+/D-Fine/ds_manipulations/dataset

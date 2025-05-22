@@ -151,10 +151,10 @@ for json_file in tqdm(json_files, desc="Processing JSON", unit="file"):
 
     seq, ann, blims = get_datafile_sequences(ds_folder, json_file)
 
-    nn_ds_folder_file = os.path.join(nn_ds_folder, base_name)
-    if not os.path.exists(nn_ds_folder_file):
-        os.makedirs(nn_ds_folder_file)
-    save_seq_as_images(seq, nn_ds_folder_file)
+    # nn_ds_folder_file = os.path.join(nn_ds_folder, base_name)
+    # if not os.path.exists(nn_ds_folder_file):
+    #     os.makedirs(nn_ds_folder_file)
+    # save_seq_as_images(seq, nn_ds_folder_file)
 
     ann = adjust_annotations(ann, blims, (320, 320))
     annotations[base_name] = ann
