@@ -25,3 +25,7 @@
 /D-Fine/bad_samples
 /D-Fine/ds_manipulations/bad_samples
 /D-Fine/ds_manipulations/dataset
+/D-Fine/ds_manipulations/removed_data
+*.pth
+/D-Fine/ds_manipulations/WOT D44-D47_01_Ch-0_D3-7
+*.pyc

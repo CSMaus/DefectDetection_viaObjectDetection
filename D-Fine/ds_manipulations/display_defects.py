@@ -11,7 +11,8 @@ from PyQt6.QtGui import QPixmap, QPainter, QPen, QColor, QImage, QFont
 from PyQt6.QtCore import Qt
 
 COLLECTION_NAME = "WOT-20250522(auto)"
-DATASET_DIR = f"dataset/{COLLECTION_NAME}"
+DATASET_DIR = "dataset/predictions"
+# f"dataset/{COLLECTION_NAME}"
 ANNOTATIONS_FILE = f"annotations-{COLLECTION_NAME}.json"
 IMAGE_SIZE = (320, 320)
 
