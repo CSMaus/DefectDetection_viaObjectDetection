@@ -109,10 +109,8 @@ def inference_on_folder(input_folder, output_folder, checkpoint, seq_len=50):
 
 
 if __name__ == "__main__":
-    # FOLDER = "WOT-D456_A4_002_Ch-0_D0.5-12"
-    FOLDER = "WOT D44-D47_01_Ch-0_D3-7"
-    # INPUT_FOLDER = os.path.join("ds_manipulations/dataset/WOT-20250522(auto)", FOLDER)
-    INPUT_FOLDER = os.path.join("ds_manipulations", FOLDER)
+    FOLDER = "D25-28_A8_02_Ch-0_D-2-20"
+    INPUT_FOLDER = os.path.join("ds_manipulations/dataset/WOT-20250522(auto)", FOLDER)
     OUTPUT_FOLDER = os.path.join("ds_manipulations/dataset/predictions", FOLDER)
     if not os.path.exists(OUTPUT_FOLDER):
         os.mkdir(OUTPUT_FOLDER)
