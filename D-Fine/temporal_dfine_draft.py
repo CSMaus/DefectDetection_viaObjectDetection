@@ -74,7 +74,7 @@ class TemporalDFine(nn.Module):
 
 # ─── Placeholder DataLoader & Training Loop ─────────────────────────────────
 
-# you will fill in your dataset later to return:
+# fill in dataset later to return:
 #   batch = {"pixel_values": Tensor(B,3,H,W), "sizes": [(H,W),...], "targets": ...}
 train_loader = DataLoader(...)
 
@@ -98,3 +98,14 @@ for epoch in range(10):
         # or for pure inference:
         # for img_i, res_i in zip(batch["images"], outputs):
         #     draw_boxes_on_image(img_i, res_i["boxes"], res_i["scores"], res_i["labels"])
+
+
+
+
+
+
+
+
+
+
+
