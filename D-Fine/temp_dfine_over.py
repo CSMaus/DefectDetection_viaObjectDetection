@@ -139,6 +139,7 @@ class TemporalDFine(nn.Module):
             config=cfg,
             ignore_mismatched_sizes=True,
         )
+        self.class_head = self.dfine.class_embed[-1]
 
         # 3) freeze everything
         for p in self.dfine.parameters():
@@ -176,21 +177,29 @@ class TemporalDFine(nn.Module):
         init_ref = out.init_reference_points
 
         fused = self.temporal_encoder(feats)
-        cls_logits = self.dfine.class_embed[-1](fused)
-        bbox_dist = self.bbox_head(fused)
+        cls_logits = self.class_head(fused)  # (T, Q, C+1)
+        cls_logits = cls_logits.clamp(-20, 20)
+        cls_logits = torch.nan_to_num(
+            cls_logits,
+            nan=0.0,
+            posinf=20.0,
+            neginf=-20.0,
+        )
 
-        # Wn = weighting_function(self.max_num_bins, self.up, self.reg_scale)
-        # distances = self.integral(bbox_dist, Wn)
-        # bbox_pred = distance2bbox(init_ref, distances, self.reg_scale).clamp(0, 1)
-        # 4) turn distributions → normalized [0,1] boxes
-        # manually build the “projection” vector Wₙ instead of using weighting_function():
+        bbox_dist = self.bbox_head(fused)  # (T, Q, 4*(bins+1))
+
+        # 4) build projection vector
         Wn = torch.arange(
             self.max_num_bins + 1,
             device=bbox_dist.device,
             dtype=bbox_dist.dtype,
-        ) * self.up / self.reg_scale  # shape: (bins+1,)
+        ) * self.up / self.reg_scale  # (bins+1,)
 
+        # 5) convert distributions → distances
         distances = self.integral(bbox_dist, Wn)  # (T, Q, 4)
+        distances = torch.nan_to_num(distances, nan=0.0, posinf=1.0, neginf=0.0)
+
+        # 7) turn distances → normalized boxes
         bbox_pred = distance2bbox(init_ref, distances, self.reg_scale).clamp(0, 1)
 
         # inference
@@ -198,8 +207,8 @@ class TemporalDFine(nn.Module):
             results = []
             for i, sz in enumerate(sizes):
                 res = self.processor.post_process_object_detection(
-                    {"logits": cls_logits[i : i + 1], "pred_boxes": bbox_pred[i : i + 1]},
-                    target_sizes=torch.tensor([sz]),
+                    {"logits": cls_logits[i:i + 1], "pred_boxes": bbox_pred[i:i + 1]},
+                    target_sizes=torch.tensor([sz], device=cls_logits.device),
                     threshold=0.3,
                 )[0]
                 results.append(res)
@@ -209,26 +218,37 @@ class TemporalDFine(nn.Module):
         losses = []
         noobj = cls_logits.size(-1) - 1
         for i, gt in enumerate(targets):
-            pl = cls_logits[i : i + 1]
-            pb = bbox_pred[i : i + 1]
+            pl = cls_logits[i: i + 1]
+            pb = bbox_pred[i: i + 1]
+
             if gt["boxes"].numel() > 0:
-                lc, _, _ = self.dfine.loss_function(
-                    logits=pl,
-                    labels=[gt],
-                    device=pl.device,
-                    pred_boxes=pb,
-                    config=self.dfine.config,
-                    outputs_class=pl.unsqueeze(0),
-                    outputs_coord=pb.unsqueeze(0),
-                    denoising_meta_values=None,
-                    predicted_corners=None,
-                    initial_reference_points=init_ref[i : i + 1].unsqueeze(0),
-                )
-                losses.append(lc)
+                try:
+                    # full Hungarian + CE + L1 + GIoU
+                    lc, _, _ = self.dfine.loss_function(
+                        logits=pl,
+                        labels=[gt],
+                        device=pl.device,
+                        pred_boxes=pb,
+                        config=self.dfine.config,
+                        outputs_class=pl.unsqueeze(0),
+                        outputs_coord=pb.unsqueeze(0),
+                        denoising_meta_values=None,
+                        predicted_corners=None,
+                        initial_reference_points=init_ref[i: i + 1].unsqueeze(0),
+                    )
+                except ValueError:
+                    # matcher blew up → treat as empty frame
+                    logp = pl.squeeze(0)
+                    fallback = torch.full((logp.size(0),), noobj,
+                                          dtype=torch.long, device=logp.device)
+                    lc = F.cross_entropy(logp, fallback)
             else:
                 logp = pl.squeeze(0)
-                tgt = torch.full((logp.size(0),), noobj, dtype=torch.long, device=pl.device)
-                losses.append(F.cross_entropy(logp, tgt))
+                fallback = torch.full((logp.size(0),), noobj,
+                                      dtype=torch.long, device=logp.device)
+                lc = F.cross_entropy(logp, fallback)
+
+            losses.append(lc)
 
         return torch.stack(losses).mean(), {}
 
