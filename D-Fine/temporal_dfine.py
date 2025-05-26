@@ -269,7 +269,7 @@ if __name__ == "__main__":
 
     history = {"epoch_loss": []}
 
-    for epoch in range(10):
+    for epoch in range(3):
         model.train()
         # model.dfine.eval()
         running_loss = 0.0
