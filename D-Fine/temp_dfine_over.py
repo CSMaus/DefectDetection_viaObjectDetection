@@ -97,12 +97,20 @@ class SequenceDataset(Dataset):
                 x1, x2, y1, y2 = o["bbox"]
                 x, y = min(x1, x2), min(y1, y2)
                 w, h = abs(x2 - x1), abs(y2 - y1)
+                # Skip invalid boxes (zero width/height or out of bounds)
+                if w <= 0 or h <= 0 or x < 0 or y < 0 or x + w > W or y + h > H:
+                    continue
                 boxes.append([(x + w/2)/W, (y + h/2)/H, w/W, h/H])
                 labels.append(self.label_map[o["label"]])
 
             if boxes:
                 boxes = torch.tensor(boxes, dtype=torch.float32)
                 labels = torch.tensor(labels, dtype=torch.int64)
+                
+                # Additional validation to ensure no NaN or Inf values
+                if torch.isnan(boxes).any() or torch.isinf(boxes).any():
+                    boxes = torch.zeros((0, 4), dtype=torch.float32)
+                    labels = torch.zeros((0,), dtype=torch.int64)
             else:
                 boxes = torch.zeros((0, 4), dtype=torch.float32)
                 labels = torch.zeros((0,), dtype=torch.int64)
@@ -187,6 +195,14 @@ class TemporalDFine(nn.Module):
         )
 
         bbox_dist = self.bbox_head(fused)  # (T, Q, 4*(bins+1))
+        
+        # Handle potential NaN values in bbox_dist
+        bbox_dist = torch.nan_to_num(
+            bbox_dist,
+            nan=0.0,
+            posinf=1.0,
+            neginf=0.0,
+        )
 
         # 4) build projection vector
         Wn = torch.arange(
@@ -201,6 +217,9 @@ class TemporalDFine(nn.Module):
 
         # 7) turn distances → normalized boxes
         bbox_pred = distance2bbox(init_ref, distances, self.reg_scale).clamp(0, 1)
+        
+        # Additional safety check for bbox_pred
+        bbox_pred = torch.nan_to_num(bbox_pred, nan=0.5, posinf=1.0, neginf=0.0)
 
         # inference
         if targets is None:
@@ -222,30 +241,43 @@ class TemporalDFine(nn.Module):
             pb = bbox_pred[i: i + 1]
 
             if gt["boxes"].numel() > 0:
-                try:
-                    # full Hungarian + CE + L1 + GIoU
-                    lc, _, _ = self.dfine.loss_function(
-                        logits=pl,
-                        labels=[gt],
-                        device=pl.device,
-                        pred_boxes=pb,
-                        config=self.dfine.config,
-                        outputs_class=pl.unsqueeze(0),
-                        outputs_coord=pb.unsqueeze(0),
-                        denoising_meta_values=None,
-                        predicted_corners=None,
-                        initial_reference_points=init_ref[i: i + 1].unsqueeze(0),
-                    )
-                except ValueError:
-                    # matcher blew up → treat as empty frame
+                # Check for NaN or Inf values in boxes
+                has_invalid_boxes = torch.isnan(gt["boxes"]).any() or torch.isinf(gt["boxes"]).any()
+                
+                if not has_invalid_boxes:
+                    try:
+                        # full Hungarian + CE + L1 + GIoU
+                        lc, _, _ = self.dfine.loss_function(
+                            logits=pl,
+                            labels=[gt],
+                            device=pl.device,
+                            pred_boxes=pb,
+                            config=self.dfine.config,
+                            outputs_class=pl.unsqueeze(0),
+                            outputs_coord=pb.unsqueeze(0),
+                            denoising_meta_values=None,
+                            predicted_corners=None,
+                            initial_reference_points=init_ref[i: i + 1].unsqueeze(0),
+                        )
+                    except Exception as e:
+                        # More general exception handling - catch any error in the matcher
+                        print(f"Warning: Matching failed with error: {e}. Using fallback loss for frame {i}.")
+                        logp = pl.squeeze(0)
+                        fallback = torch.full((logp.size(0),), noobj,
+                                            dtype=torch.long, device=logp.device)
+                        lc = F.cross_entropy(logp, fallback)
+                else:
+                    # Invalid boxes detected, use fallback
+                    print(f"Warning: Invalid box values detected in frame {i}. Using fallback loss.")
                     logp = pl.squeeze(0)
                     fallback = torch.full((logp.size(0),), noobj,
-                                          dtype=torch.long, device=logp.device)
+                                        dtype=torch.long, device=logp.device)
                     lc = F.cross_entropy(logp, fallback)
             else:
+                # No boxes in ground truth, use fallback
                 logp = pl.squeeze(0)
                 fallback = torch.full((logp.size(0),), noobj,
-                                      dtype=torch.long, device=logp.device)
+                                    dtype=torch.long, device=logp.device)
                 lc = F.cross_entropy(logp, fallback)
 
             losses.append(lc)
@@ -289,7 +321,7 @@ if __name__ == "__main__":
     trainable = list(model.temporal_encoder.parameters()) + list(
         model.dfine.class_embed[-1].parameters()
     )
-    optimizer = torch.optim.Adam(trainable, lr=1e-4)
+    optimizer = torch.optim.Adam(trainable, lr=1e-5)
 
     loader = DataLoader(
         ds,
@@ -306,21 +338,38 @@ if __name__ == "__main__":
         model.train()
         running, count = 0.0, 0
         for batch in tqdm(loader, desc=f"Epoch {epoch}"):
-            pv, sz, tg = (
-                batch["pixel_values"].squeeze(0).to(DEVICE),
-                batch["sizes"],
-                batch["targets"],
-            )
-            loss, _ = model(pv, sz, targets=tg)
-            optimizer.zero_grad()
-            loss.backward()
-            torch.nn.utils.clip_grad_norm_(trainable, max_norm=1.0)
-            optimizer.step()
+            try:
+                pv, sz, tg = (
+                    batch["pixel_values"].squeeze(0).to(DEVICE),
+                    batch["sizes"],
+                    batch["targets"],
+                )
+                
+                # Validate targets before processing
+                valid_batch = True
+                for t in tg:
+                    if t["boxes"].numel() > 0:
+                        if torch.isnan(t["boxes"]).any() or torch.isinf(t["boxes"]).any():
+                            print(f"Warning: Skipping batch with invalid box values")
+                            valid_batch = False
+                            break
+                
+                if not valid_batch:
+                    continue
+                    
+                loss, _ = model(pv, sz, targets=tg)
+                optimizer.zero_grad()
+                loss.backward()
+                torch.nn.utils.clip_grad_norm_(trainable, max_norm=1.0)
+                optimizer.step()
 
-            running += loss.item()
-            count += 1
-            print(f"Batch loss: {loss.item():.4f}")
-            history["batch_loss"].append(loss.item())
+                running += loss.item()
+                count += 1
+                print(f"Batch loss: {loss.item():.4f}")
+                history["batch_loss"].append(loss.item())
+            except Exception as e:
+                print(f"Error processing batch: {str(e)}")
+                continue
 
         avg = running / count
         history["epoch_loss"].append(avg)
