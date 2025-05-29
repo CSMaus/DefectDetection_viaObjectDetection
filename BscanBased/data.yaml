@@ -2,7 +2,6 @@
 
 train: yolo_data/images/train
 val: yolo_data/images/train
-# yolo_data/images/val
 
-nc: 1         # number of classes = 1
-names: ['delamination']  # single class name
+nc: 1
+names: ['delamination']
