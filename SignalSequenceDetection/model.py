@@ -120,7 +120,7 @@ class SequenceTransformer(nn.Module):
 
 class DefectDetectionHead(nn.Module):
     """
-    Detection head for predicting defect class and position.
+    Detection head for predicting defect class and position within 1D signals.
     """
     def __init__(self, d_model=128, num_classes=2):
         super(DefectDetectionHead, self).__init__()
@@ -133,13 +133,13 @@ class DefectDetectionHead(nn.Module):
             nn.Linear(d_model // 2, num_classes)
         )
         
-        # Bounding box prediction (start, end)
-        self.bbox_head = nn.Sequential(
+        # Defect position prediction (start, end) within the 1D signal
+        self.position_head = nn.Sequential(
             nn.Linear(d_model, d_model // 2),
             nn.ReLU(),
             nn.Dropout(0.1),
             nn.Linear(d_model // 2, 2),
-            nn.Sigmoid()  # Normalize to [0, 1]
+            nn.Sigmoid()  # Normalize to [0, 1] range of the signal length
         )
         
     def forward(self, x):
@@ -148,12 +148,12 @@ class DefectDetectionHead(nn.Module):
             x: Tensor, shape [batch_size, seq_len, d_model]
         Returns:
             class_logits: Tensor, shape [batch_size, seq_len, num_classes]
-            bbox_pred: Tensor, shape [batch_size, seq_len, 2]
+            position_pred: Tensor, shape [batch_size, seq_len, 2] (start, end positions in signal)
         """
         class_logits = self.class_head(x)
-        bbox_pred = self.bbox_head(x)
+        position_pred = self.position_head(x)
         
-        return class_logits, bbox_pred
+        return class_logits, position_pred
 
 
 class ContextAggregator(nn.Module):
@@ -288,10 +288,10 @@ class SignalSequenceDetector(nn.Module):
         """
         Args:
             x: Tensor, shape [batch_size, seq_len, signal_length]
-            targets: List of dicts with 'label' and 'bbox' keys
+            targets: List of dicts with 'label' and position information
         Returns:
             If targets is None:
-                dict with 'class_preds', 'bbox_preds', 'anomaly_scores'
+                dict with predictions
             Else:
                 loss, dict with loss components
         """
@@ -319,8 +319,8 @@ class SignalSequenceDetector(nn.Module):
         # 7. Detect anomalies by comparing to health features
         anomaly_scores = self.anomaly_detector(enhanced_features, health_features)
         
-        # 8. Predict class and bounding box
-        class_logits, bbox_pred = self.detection_head(enhanced_features)
+        # 8. Predict class and defect positions within signals
+        class_logits, position_pred = self.detection_head(enhanced_features)
         
         # 9. Enhance class predictions with anomaly scores
         # For non-health classes (index > 0), add anomaly score
@@ -337,26 +337,26 @@ class SignalSequenceDetector(nn.Module):
         if targets is None:
             return {
                 'class_preds': class_logits,
-                'bbox_preds': bbox_pred,
+                'position_preds': position_pred,  # Start and end positions within signals
                 'anomaly_scores': anomaly_scores,
                 'attention_weights': attention_weights
             }
         
         # 11. Compute loss
-        loss_dict = self._compute_loss(class_logits, bbox_pred, anomaly_scores, targets)
-        total_loss = loss_dict['cls_loss'] + loss_dict['bbox_loss'] + 0.1 * loss_dict['anomaly_consistency_loss']
+        loss_dict = self._compute_loss(class_logits, position_pred, anomaly_scores, targets)
+        total_loss = loss_dict['cls_loss'] + loss_dict['position_loss'] + 0.1 * loss_dict['anomaly_consistency_loss']
         
         return total_loss, loss_dict
     
-    def _compute_loss(self, class_logits, bbox_pred, anomaly_scores, targets):
+    def _compute_loss(self, class_logits, position_pred, anomaly_scores, targets):
         """
         Compute loss for training.
         
         Args:
             class_logits: Tensor, shape [batch_size, seq_len, num_classes]
-            bbox_pred: Tensor, shape [batch_size, seq_len, 2]
+            position_pred: Tensor, shape [batch_size, seq_len, 2] (start, end positions in signal)
             anomaly_scores: Tensor, shape [batch_size, seq_len, 1]
-            targets: List of dicts with 'label' and 'bbox' keys
+            targets: List of dicts with 'label' and position information
         
         Returns:
             dict with loss components
@@ -366,17 +366,25 @@ class SignalSequenceDetector(nn.Module):
         
         # Prepare target tensors
         target_classes = torch.zeros((batch_size, seq_len), dtype=torch.long, device=device)
-        target_boxes = torch.zeros((batch_size, seq_len, 2), dtype=torch.float32, device=device)
+        target_positions = torch.zeros((batch_size, seq_len, 2), dtype=torch.float32, device=device)
         
         # Fill target tensors
         for b in range(batch_size):
             for i, target in enumerate(targets[b]):
                 if i < seq_len:
                     target_classes[b, i] = target['label']
-                    # Only use the last two values (defect start, defect end)
-                    if target['bbox'].numel() >= 4:
-                        target_boxes[b, i, 0] = target['bbox'][2]  # defect start
-                        target_boxes[b, i, 1] = target['bbox'][3]  # defect end
+                    
+                    # Extract defect start and end positions within the signal
+                    if target['label'] > 0:  # If it's a defect (not "Health")
+                        if torch.is_tensor(target['bbox']):
+                            if target['bbox'].numel() >= 4:
+                                # The defect positions are the last two values in bbox
+                                target_positions[b, i, 0] = target['bbox'][2]  # defect start position
+                                target_positions[b, i, 1] = target['bbox'][3]  # defect end position
+                        else:
+                            # Handle case where bbox might be a list or numpy array
+                            target_positions[b, i, 0] = target['bbox'][2]  # defect start position
+                            target_positions[b, i, 1] = target['bbox'][3]  # defect end position
         
         # Classification loss
         cls_loss = F.cross_entropy(
@@ -384,17 +392,17 @@ class SignalSequenceDetector(nn.Module):
             target_classes.view(-1)
         )
         
-        # Bounding box loss (only for positive samples)
-        positive_mask = (target_classes > 0).unsqueeze(-1).expand_as(target_boxes)
+        # Position prediction loss (only for defect signals)
+        positive_mask = (target_classes > 0).unsqueeze(-1).expand_as(target_positions)
         
         if positive_mask.sum() > 0:
-            # L1 loss for bounding boxes
-            bbox_loss = F.l1_loss(
-                bbox_pred[positive_mask],
-                target_boxes[positive_mask]
+            # L1 loss for defect positions
+            position_loss = F.l1_loss(
+                position_pred[positive_mask],
+                target_positions[positive_mask]
             )
         else:
-            bbox_loss = torch.tensor(0.0, device=device)
+            position_loss = torch.tensor(0.0, device=device)
         
         # Anomaly consistency loss
         anomaly_consistency_loss = 0.0
@@ -408,9 +416,9 @@ class SignalSequenceDetector(nn.Module):
         
         return {
             'cls_loss': cls_loss,
-            'bbox_loss': bbox_loss,
+            'position_loss': position_loss,
             'anomaly_consistency_loss': anomaly_consistency_loss,
-            'total_loss': cls_loss + bbox_loss + 0.1 * anomaly_consistency_loss
+            'total_loss': cls_loss + position_loss + 0.1 * anomaly_consistency_loss
         }
     
     def predict(self, x, threshold=0.5):
@@ -430,7 +438,7 @@ class SignalSequenceDetector(nn.Module):
         
         batch_size, seq_len = x.shape[0], x.shape[1]
         class_preds = preds['class_preds']
-        bbox_preds = preds['bbox_preds']
+        position_preds = preds['position_preds']
         anomaly_scores = preds['anomaly_scores']
         
         results = []
@@ -446,8 +454,8 @@ class SignalSequenceDetector(nn.Module):
                 pred_class = torch.argmax(class_probs).item()
                 class_score = class_probs[pred_class].item()
                 
-                # Get bounding box
-                pred_bbox = bbox_preds[b, i].cpu().numpy()
+                # Get defect position within the signal
+                pred_position = position_preds[b, i].cpu().numpy()
                 
                 # Get anomaly score
                 anomaly_score = anomaly_scores[b, i, 0].item()
@@ -455,10 +463,10 @@ class SignalSequenceDetector(nn.Module):
                 # Add to results if confidence is above threshold
                 if class_score > threshold or (pred_class > 0 and anomaly_score > threshold):
                     sequence_results.append({
-                        'position': i,
+                        'position': i,  # Position in sequence
                         'class': pred_class,
                         'class_score': class_score,
-                        'bbox': pred_bbox,
+                        'defect_position': pred_position,  # Start and end positions within the signal
                         'anomaly_score': anomaly_score
                     })
             

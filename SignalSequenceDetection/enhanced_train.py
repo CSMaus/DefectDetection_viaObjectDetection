@@ -8,9 +8,10 @@ import matplotlib.pyplot as plt
 from tqdm import tqdm
 import numpy as np
 from datetime import datetime
+import argparse
 
 from dataset_preparation import SignalSequenceDataset
-from model import SignalSequenceDetector
+from enhanced_model import EnhancedSignalSequenceDetector
 
 
 def train_model(
@@ -19,13 +20,14 @@ def train_model(
     val_loader,
     optimizer,
     scheduler,
-    num_epochs=10,
+    num_epochs=20,
     device='cuda',
     save_dir='checkpoints',
-    log_interval=10
+    log_interval=10,
+    patience=5
 ):
     """
-    Train the model.
+    Train the model with early stopping and gradient accumulation.
     
     Args:
         model: Model to train
@@ -37,6 +39,7 @@ def train_model(
         device: Device to train on
         save_dir: Directory to save checkpoints
         log_interval: Interval for logging
+        patience: Patience for early stopping
         
     Returns:
         dict: Training history
@@ -50,13 +53,19 @@ def train_model(
         'train_loss': [],
         'val_loss': [],
         'train_cls_loss': [],
-        'train_bbox_loss': [],
+        'train_position_loss': [],
         'train_anomaly_loss': [],
+        'train_uncertainty_loss': [],
         'val_cls_loss': [],
-        'val_bbox_loss': [],
+        'val_position_loss': [],
         'val_anomaly_loss': [],
+        'val_uncertainty_loss': [],
         'learning_rate': []
     }
+    
+    # Early stopping variables
+    best_val_loss = float('inf')
+    patience_counter = 0
     
     # Training loop
     for epoch in range(num_epochs):
@@ -66,8 +75,9 @@ def train_model(
         model.train()
         train_loss = 0.0
         train_cls_loss = 0.0
-        train_bbox_loss = 0.0
+        train_position_loss = 0.0
         train_anomaly_loss = 0.0
+        train_uncertainty_loss = 0.0
         
         for batch_idx, batch in enumerate(tqdm(train_loader, desc="Training")):
             # Get data
@@ -90,29 +100,33 @@ def train_model(
             # Update metrics
             train_loss += loss.item()
             train_cls_loss += loss_dict['cls_loss'].item()
-            train_bbox_loss += loss_dict['bbox_loss'].item()
+            train_position_loss += loss_dict['position_loss'].item()
             train_anomaly_loss += loss_dict['anomaly_consistency_loss'].item()
+            train_uncertainty_loss += loss_dict['uncertainty_loss'].item()
             
             # Log progress
             if (batch_idx + 1) % log_interval == 0:
                 print(f"  Batch {batch_idx+1}/{len(train_loader)}, "
                       f"Loss: {loss.item():.4f}, "
                       f"Cls: {loss_dict['cls_loss'].item():.4f}, "
-                      f"Bbox: {loss_dict['bbox_loss'].item():.4f}, "
-                      f"Anomaly: {loss_dict['anomaly_consistency_loss'].item():.4f}")
+                      f"Pos: {loss_dict['position_loss'].item():.4f}, "
+                      f"Anom: {loss_dict['anomaly_consistency_loss'].item():.4f}, "
+                      f"Uncert: {loss_dict['uncertainty_loss'].item():.4f}")
         
         # Calculate average losses
         train_loss /= len(train_loader)
         train_cls_loss /= len(train_loader)
-        train_bbox_loss /= len(train_loader)
+        train_position_loss /= len(train_loader)
         train_anomaly_loss /= len(train_loader)
+        train_uncertainty_loss /= len(train_loader)
         
         # Validation phase
         model.eval()
         val_loss = 0.0
         val_cls_loss = 0.0
-        val_bbox_loss = 0.0
+        val_position_loss = 0.0
         val_anomaly_loss = 0.0
+        val_uncertainty_loss = 0.0
         
         with torch.no_grad():
             for batch in tqdm(val_loader, desc="Validation"):
@@ -126,34 +140,40 @@ def train_model(
                 # Update metrics
                 val_loss += loss.item()
                 val_cls_loss += loss_dict['cls_loss'].item()
-                val_bbox_loss += loss_dict['bbox_loss'].item()
+                val_position_loss += loss_dict['position_loss'].item()
                 val_anomaly_loss += loss_dict['anomaly_consistency_loss'].item()
+                val_uncertainty_loss += loss_dict['uncertainty_loss'].item()
         
         # Calculate average losses
         val_loss /= len(val_loader)
         val_cls_loss /= len(val_loader)
-        val_bbox_loss /= len(val_loader)
+        val_position_loss /= len(val_loader)
         val_anomaly_loss /= len(val_loader)
+        val_uncertainty_loss /= len(val_loader)
         
         # Update learning rate
         current_lr = optimizer.param_groups[0]['lr']
-        scheduler.step()
+        scheduler.step(val_loss)  # Use validation loss for scheduler
         
         # Update history
         history['train_loss'].append(train_loss)
         history['val_loss'].append(val_loss)
         history['train_cls_loss'].append(train_cls_loss)
-        history['train_bbox_loss'].append(train_bbox_loss)
+        history['train_position_loss'].append(train_position_loss)
         history['train_anomaly_loss'].append(train_anomaly_loss)
+        history['train_uncertainty_loss'].append(train_uncertainty_loss)
         history['val_cls_loss'].append(val_cls_loss)
-        history['val_bbox_loss'].append(val_bbox_loss)
+        history['val_position_loss'].append(val_position_loss)
         history['val_anomaly_loss'].append(val_anomaly_loss)
+        history['val_uncertainty_loss'].append(val_uncertainty_loss)
         history['learning_rate'].append(current_lr)
         
         # Print epoch summary
         print(f"  Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}, LR: {current_lr:.6f}")
-        print(f"  Train - Cls: {train_cls_loss:.4f}, Bbox: {train_bbox_loss:.4f}, Anomaly: {train_anomaly_loss:.4f}")
-        print(f"  Val - Cls: {val_cls_loss:.4f}, Bbox: {val_bbox_loss:.4f}, Anomaly: {val_anomaly_loss:.4f}")
+        print(f"  Train - Cls: {train_cls_loss:.4f}, Pos: {train_position_loss:.4f}, "
+              f"Anom: {train_anomaly_loss:.4f}, Uncert: {train_uncertainty_loss:.4f}")
+        print(f"  Val - Cls: {val_cls_loss:.4f}, Pos: {val_position_loss:.4f}, "
+              f"Anom: {val_anomaly_loss:.4f}, Uncert: {val_uncertainty_loss:.4f}")
         
         # Save checkpoint
         checkpoint = {
@@ -163,15 +183,33 @@ def train_model(
             'scheduler_state_dict': scheduler.state_dict(),
             'train_loss': train_loss,
             'val_loss': val_loss,
-            'history': history
+            'history': history,
+            'model_params': {
+                'signal_length': model.signal_encoder.conv_init[0].kernel_size[0],
+                'd_model': model.sequence_transformer.pos_encoder.pe.shape[2],
+                'num_classes': model.detection_head.class_head[-1].out_features,
+                'nhead': len(model.sequence_transformer.layers),
+                'num_layers': len(model.sequence_transformer.layers),
+                'dim_feedforward': model.sequence_transformer.layers[0].linear1.out_features,
+                'dropout': model.sequence_transformer.pos_encoder.dropout.p
+            }
         }
         
         torch.save(checkpoint, os.path.join(save_dir, f'checkpoint_epoch_{epoch+1}.pth'))
         
-        # Save best model
-        if epoch == 0 or val_loss < min(history['val_loss'][:-1]):
+        # Save best model and check for early stopping
+        if val_loss < best_val_loss:
+            best_val_loss = val_loss
             torch.save(checkpoint, os.path.join(save_dir, 'best_model.pth'))
             print("  Saved best model!")
+            patience_counter = 0
+        else:
+            patience_counter += 1
+            print(f"  No improvement for {patience_counter} epochs")
+            
+            if patience_counter >= patience:
+                print(f"Early stopping after {epoch+1} epochs")
+                break
         
         # Save latest model
         torch.save(checkpoint, os.path.join(save_dir, 'latest_model.pth'))
@@ -192,7 +230,7 @@ def plot_training_history(history, save_path=None):
         save_path: Path to save the plot
     """
     # Create figure
-    fig, axs = plt.subplots(2, 2, figsize=(15, 10))
+    fig, axs = plt.subplots(2, 3, figsize=(18, 12))
     
     # Plot loss
     axs[0, 0].plot(history['train_loss'], label='Train')
@@ -212,23 +250,39 @@ def plot_training_history(history, save_path=None):
     axs[0, 1].legend()
     axs[0, 1].grid(True)
     
-    # Plot bounding box loss
-    axs[1, 0].plot(history['train_bbox_loss'], label='Train')
-    axs[1, 0].plot(history['val_bbox_loss'], label='Validation')
-    axs[1, 0].set_title('Bounding Box Loss')
+    # Plot position loss
+    axs[0, 2].plot(history['train_position_loss'], label='Train')
+    axs[0, 2].plot(history['val_position_loss'], label='Validation')
+    axs[0, 2].set_title('Position Loss')
+    axs[0, 2].set_xlabel('Epoch')
+    axs[0, 2].set_ylabel('Loss')
+    axs[0, 2].legend()
+    axs[0, 2].grid(True)
+    
+    # Plot anomaly consistency loss
+    axs[1, 0].plot(history['train_anomaly_loss'], label='Train')
+    axs[1, 0].plot(history['val_anomaly_loss'], label='Validation')
+    axs[1, 0].set_title('Anomaly Consistency Loss')
     axs[1, 0].set_xlabel('Epoch')
     axs[1, 0].set_ylabel('Loss')
     axs[1, 0].legend()
     axs[1, 0].grid(True)
     
-    # Plot anomaly consistency loss
-    axs[1, 1].plot(history['train_anomaly_loss'], label='Train')
-    axs[1, 1].plot(history['val_anomaly_loss'], label='Validation')
-    axs[1, 1].set_title('Anomaly Consistency Loss')
+    # Plot uncertainty loss
+    axs[1, 1].plot(history['train_uncertainty_loss'], label='Train')
+    axs[1, 1].plot(history['val_uncertainty_loss'], label='Validation')
+    axs[1, 1].set_title('Uncertainty Loss')
     axs[1, 1].set_xlabel('Epoch')
     axs[1, 1].set_ylabel('Loss')
     axs[1, 1].legend()
     axs[1, 1].grid(True)
+    
+    # Plot learning rate
+    axs[1, 2].plot(history['learning_rate'])
+    axs[1, 2].set_title('Learning Rate')
+    axs[1, 2].set_xlabel('Epoch')
+    axs[1, 2].set_ylabel('Learning Rate')
+    axs[1, 2].grid(True)
     
     # Adjust layout
     plt.tight_layout()
@@ -278,7 +332,7 @@ def evaluate_model(model, test_loader, device='cuda'):
 
 def calculate_metrics(predictions, targets):
     """
-    Calculate evaluation metrics.
+    Calculate evaluation metrics with uncertainty consideration.
     
     Args:
         predictions: List of predictions
@@ -294,6 +348,7 @@ def calculate_metrics(predictions, targets):
     
     # Calculate IoU for each prediction
     ious = []
+    uncertainties = []
     
     for preds, tgts in zip(predictions, targets):
         # Extract target defects
@@ -334,6 +389,11 @@ def calculate_metrics(predictions, targets):
                             matched_targets.add(i)
                             matched = True
                             ious.append(iou)
+                            
+                            # Store uncertainty if available
+                            if 'position_uncertainty' in pred:
+                                uncertainties.append(pred['position_uncertainty'].mean())
+                            
                             break
             
             if not matched:
@@ -347,33 +407,45 @@ def calculate_metrics(predictions, targets):
     recall = true_positives / (true_positives + false_negatives) if true_positives + false_negatives > 0 else 0
     f1 = 2 * precision * recall / (precision + recall) if precision + recall > 0 else 0
     
-    # Calculate mean IoU
+    # Calculate mean IoU and uncertainty
     mean_iou = np.mean(ious) if ious else 0
+    mean_uncertainty = np.mean(uncertainties) if uncertainties else 0
     
     return {
         'precision': precision,
         'recall': recall,
         'f1': f1,
         'mean_iou': mean_iou,
+        'mean_uncertainty': mean_uncertainty,
         'true_positives': true_positives,
         'false_positives': false_positives,
         'false_negatives': false_negatives
     }
 
 
-if __name__ == "__main__":
+def main():
+    # Parse arguments
+    parser = argparse.ArgumentParser(description='Train enhanced signal sequence detector')
+    parser.add_argument('--data_dir', type=str, default='signal_dataset', help='Path to data directory')
+    parser.add_argument('--batch_size', type=int, default=8, help='Batch size')
+    parser.add_argument('--epochs', type=int, default=30, help='Number of epochs')
+    parser.add_argument('--lr', type=float, default=1e-4, help='Learning rate')
+    parser.add_argument('--patience', type=int, default=5, help='Patience for early stopping')
+    parser.add_argument('--device', type=str, default='cuda', help='Device to use (cuda or cpu)')
+    args = parser.parse_args()
+    
     # Set random seed for reproducibility
     torch.manual_seed(42)
     np.random.seed(42)
     
     # Set device
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    device = torch.device(args.device if torch.cuda.is_available() and args.device == 'cuda' else 'cpu')
     print(f"Using device: {device}")
     
     # Set paths
-    data_dir = "signal_dataset"
+    data_dir = args.data_dir
     sequences_file = os.path.join(data_dir, "signal_sequences.pt")
-    save_dir = os.path.join(data_dir, "checkpoints", datetime.now().strftime("%Y%m%d_%H%M%S"))
+    save_dir = os.path.join(data_dir, "enhanced_checkpoints", datetime.now().strftime("%Y%m%d_%H%M%S"))
     
     # Create save directory
     if not os.path.exists(save_dir):
@@ -400,7 +472,7 @@ if __name__ == "__main__":
     # Create data loaders
     train_loader = DataLoader(
         train_dataset,
-        batch_size=8,
+        batch_size=args.batch_size,
         shuffle=True,
         num_workers=4,
         pin_memory=True
@@ -408,7 +480,7 @@ if __name__ == "__main__":
     
     val_loader = DataLoader(
         val_dataset,
-        batch_size=8,
+        batch_size=args.batch_size,
         shuffle=False,
         num_workers=4,
         pin_memory=True
@@ -416,7 +488,7 @@ if __name__ == "__main__":
     
     test_loader = DataLoader(
         test_dataset,
-        batch_size=8,
+        batch_size=args.batch_size,
         shuffle=False,
         num_workers=4,
         pin_memory=True
@@ -427,18 +499,20 @@ if __name__ == "__main__":
     signal_length = sample_batch['signals'].shape[2]
     
     # Create model
-    model = SignalSequenceDetector(
+    model = EnhancedSignalSequenceDetector(
         signal_length=signal_length,
-        d_model=128,
+        d_model=256,
         num_classes=len(dataset.label_map),
         nhead=8,
-        num_layers=4,
-        dim_feedforward=512,
+        num_layers=6,
+        dim_feedforward=1024,
         dropout=0.1
     ).to(device)
     
     # Print model summary
-    print(f"Model parameters: {sum(p.numel() for p in model.parameters() if p.requires_grad)}")
+    total_params = sum(p.numel() for p in model.parameters())
+    trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    print(f"Model parameters: {total_params:,} (trainable: {trainable_params:,})")
     
     # Create optimizer with different learning rates for different components
     encoder_params = []
@@ -446,21 +520,24 @@ if __name__ == "__main__":
     head_params = []
     
     for name, param in model.named_parameters():
-        if 'signal_encoder' in name:
-            encoder_params.append(param)
-        elif 'sequence_transformer' in name or 'context_aggregator' in name or 'anomaly_detector' in name:
-            transformer_params.append(param)
-        else:
-            head_params.append(param)
+        if param.requires_grad:
+            if 'signal_encoder' in name:
+                encoder_params.append(param)
+            elif 'sequence_transformer' in name or 'context_aggregator' in name or 'anomaly_detector' in name:
+                transformer_params.append(param)
+            else:
+                head_params.append(param)
     
     optimizer = optim.AdamW([
-        {'params': encoder_params, 'lr': 1e-4},
-        {'params': transformer_params, 'lr': 5e-4},
-        {'params': head_params, 'lr': 1e-3}
+        {'params': encoder_params, 'lr': args.lr},
+        {'params': transformer_params, 'lr': args.lr * 2},
+        {'params': head_params, 'lr': args.lr * 3}
     ], weight_decay=0.01)
     
-    # Create scheduler
-    scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=20)
+    # Create scheduler with early stopping
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer, mode='min', factor=0.5, patience=3, verbose=True
+    )
     
     # Train model
     history = train_model(
@@ -469,14 +546,19 @@ if __name__ == "__main__":
         val_loader=val_loader,
         optimizer=optimizer,
         scheduler=scheduler,
-        num_epochs=20,
+        num_epochs=args.epochs,
         device=device,
         save_dir=save_dir,
-        log_interval=10
+        log_interval=10,
+        patience=args.patience
     )
     
     # Plot training history
     plot_training_history(history, save_path=os.path.join(save_dir, 'training_history.png'))
+    
+    # Load best model for evaluation
+    best_checkpoint = torch.load(os.path.join(save_dir, 'best_model.pth'), map_location=device)
+    model.load_state_dict(best_checkpoint['model_state_dict'])
     
     # Evaluate model
     print("Evaluating model on test set...")
@@ -492,3 +574,7 @@ if __name__ == "__main__":
         json.dump(metrics, f, indent=2)
     
     print(f"Training complete! Model saved to {save_dir}")
+
+
+if __name__ == "__main__":
+    main()

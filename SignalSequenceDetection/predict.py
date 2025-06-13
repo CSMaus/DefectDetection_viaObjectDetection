@@ -107,8 +107,8 @@ def visualize_predictions(signals, predictions, save_path=None, max_signals=10):
         # Add predictions if available
         for pred in predictions:
             if pred['position'] == i:
-                # Get bounding box
-                start, end = pred['bbox']
+                # Get defect position within the signal
+                start, end = pred['defect_position']
                 start_idx = int(start * len(signals[i]))
                 end_idx = int(end * len(signals[i]))
                 

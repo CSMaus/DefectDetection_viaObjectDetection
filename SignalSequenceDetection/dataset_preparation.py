@@ -117,7 +117,7 @@ class SignalSequencePreparation:
     
     def normalize_annotations(self, annotations, beam_lims):
         """
-        Normalize annotations to be in range [0, 1].
+        Normalize annotations for signal sequences.
         
         Args:
             annotations (dict): Annotations dictionary
@@ -140,6 +140,7 @@ class SignalSequencePreparation:
                 beam_pos_end = (defect["bbox"][1] - beam_start) / beam_len
                 
                 # Keep defect positions as is (they should already be in [0, 1] range)
+                # These represent the start and end positions within the 1D signal
                 defect_start = defect["bbox"][2]
                 defect_end = defect["bbox"][3]
                 
@@ -326,11 +327,8 @@ class SignalSequenceDataset(Dataset):
     def __getitem__(self, idx):
         sequence = self.sequences[idx]
         
-        # Extract signals and convert to tensor
+        # Extract signals and convert to tensor - signals are already normalized
         signals = torch.tensor(sequence['signals'], dtype=torch.float32)
-        
-        # Normalize signals to [0, 1] range
-        signals = (signals - signals.min()) / (signals.max() - signals.min() + 1e-8)
         
         # Create targets
         targets = []
