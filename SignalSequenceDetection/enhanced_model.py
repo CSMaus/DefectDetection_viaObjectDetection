@@ -632,70 +632,70 @@ class EnhancedSignalSequenceDetector(nn.Module):
                     if i < seq_len:
                         self._process_single_target(target, target_classes, target_positions, 0, i)
         
-        # Classification loss with uncertainty weighting
-        # Flatten for loss calculation
+        # Classification loss - standard cross entropy
         flat_logits = class_logits.view(-1, num_classes)
         flat_targets = target_classes.view(-1)
-        flat_uncertainty = class_uncertainty.view(-1, num_classes)
         
-        # Get uncertainty for the predicted class
-        pred_uncertainty = torch.gather(
-            flat_uncertainty, 1, 
-            torch.argmax(flat_logits, dim=1, keepdim=True)
-        ).squeeze(1)
+        # Standard classification loss
+        cls_loss = F.cross_entropy(flat_logits, flat_targets)
         
-        # Compute weighted classification loss
-        cls_loss = F.cross_entropy(flat_logits, flat_targets, reduction='none')
-        weighted_cls_loss = (cls_loss / (2 * pred_uncertainty + 1e-8) + 0.5 * torch.log(pred_uncertainty + 1e-8)).mean()
+        # Add uncertainty regularization for classification
+        # Use absolute value to ensure positive loss
+        cls_uncertainty_reg = torch.mean(torch.exp(-class_uncertainty) + class_uncertainty)
         
-        # Position prediction loss with uncertainty weighting (only for defect signals)
+        # Combined classification loss (always positive)
+        weighted_cls_loss = cls_loss + 0.1 * cls_uncertainty_reg
+        
+        # Position prediction loss (only for defect signals)
         positive_mask = (target_classes > 0).unsqueeze(-1).expand_as(target_positions)
         
         if positive_mask.sum() > 0:
-            # L1 loss for defect positions
+            # Standard L1 loss for defect positions
             pos_loss = F.l1_loss(
                 position_pred[positive_mask],
-                target_positions[positive_mask],
-                reduction='none'
+                target_positions[positive_mask]
             )
             
-            # Get position uncertainty for positive samples
-            pos_uncertainty = position_uncertainty[positive_mask]
+            # Add uncertainty regularization for position
+            pos_uncertainty_reg = torch.mean(torch.exp(-position_uncertainty[positive_mask]) + position_uncertainty[positive_mask])
             
-            # Compute weighted position loss
-            weighted_pos_loss = (pos_loss / (2 * pos_uncertainty + 1e-8) + 0.5 * torch.log(pos_uncertainty + 1e-8)).mean()
+            # Combined position loss (always positive)
+            weighted_pos_loss = pos_loss + 0.1 * pos_uncertainty_reg
         else:
             weighted_pos_loss = torch.tensor(0.0, device=device)
         
-        # Anomaly consistency loss with uncertainty weighting
+        # Anomaly consistency loss
         anomaly_consistency_loss = 0.0
-        uncertainty_loss = 0.0
         
         if seq_len > 1:
             # Calculate temporal consistency loss for anomaly scores
+            temporal_diffs = []
             for t in range(1, seq_len):
-                # Consistency loss weighted by uncertainty
-                diff = anomaly_scores[:, t] - anomaly_scores[:, t-1]
-                uncertainty = 0.5 * (anomaly_uncertainty[:, t] + anomaly_uncertainty[:, t-1])
-                
-                weighted_diff = (diff**2) / (2 * uncertainty + 1e-8) + 0.5 * torch.log(uncertainty + 1e-8)
-                anomaly_consistency_loss += weighted_diff.mean()
+                diff = torch.abs(anomaly_scores[:, t] - anomaly_scores[:, t-1])
+                temporal_diffs.append(diff)
             
-            anomaly_consistency_loss /= (seq_len - 1)
+            if temporal_diffs:
+                # Use standard L1 loss for temporal consistency
+                anomaly_consistency_loss = torch.cat(temporal_diffs).mean()
             
-            # Add uncertainty regularization to prevent collapse
-            uncertainty_loss = (
-                torch.mean(1.0 / (class_uncertainty + 1e-8)) + 
-                torch.mean(1.0 / (position_uncertainty + 1e-8)) + 
-                torch.mean(1.0 / (anomaly_uncertainty + 1e-8))
+            # Add uncertainty regularization (always positive)
+            uncertainty_reg = (
+                torch.mean(torch.exp(-class_uncertainty) + class_uncertainty) + 
+                torch.mean(torch.exp(-position_uncertainty) + position_uncertainty) + 
+                torch.mean(torch.exp(-anomaly_uncertainty) + anomaly_uncertainty)
             ) * 0.01
+        else:
+            uncertainty_reg = torch.tensor(0.0, device=device)
+        
+        # Ensure all losses are positive
+        total_loss = weighted_cls_loss + weighted_pos_loss + 0.1 * anomaly_consistency_loss + 0.05 * uncertainty_reg
         
         return {
             'cls_loss': weighted_cls_loss,
             'position_loss': weighted_pos_loss,
             'anomaly_consistency_loss': anomaly_consistency_loss,
-            'uncertainty_loss': uncertainty_loss,
-            'total_loss': weighted_cls_loss + weighted_pos_loss + 0.1 * anomaly_consistency_loss + 0.05 * uncertainty_loss
+            'uncertainty_loss': uncertainty_reg,
+            'total_loss': total_loss
         }
     
     def _process_single_target(self, target, target_classes, target_positions, batch_idx, seq_idx):
