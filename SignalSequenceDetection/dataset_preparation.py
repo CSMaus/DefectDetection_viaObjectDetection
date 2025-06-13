@@ -187,7 +187,7 @@ class SignalSequencePreparation:
     
     def create_beam_sequences(self):
         """
-        Create sequences of signals for each beam.
+        Create sequences of signals for each beam, ensuring all have the same length.
         
         Returns:
             list: List of sequences
@@ -207,8 +207,20 @@ class SignalSequencePreparation:
                 
                 num_signals = len(signals)
                 
-                if num_signals <= self.seq_length:
-                    # If we have fewer signals than seq_length, use all of them
+                if num_signals < self.seq_length:
+                    # Pad with zeros to reach seq_length
+                    padded_signals = np.zeros((self.seq_length, signals.shape[1]), dtype=signals.dtype)
+                    padded_signals[:num_signals] = signals
+                    
+                    beam_sequences.append({
+                        'file_name': file_name,
+                        'scan_key': scan_key,
+                        'signals': padded_signals,
+                        'annotations': annotations,
+                        'original_length': num_signals  # Store original length for reference
+                    })
+                elif num_signals == self.seq_length:
+                    # Use as is
                     beam_sequences.append({
                         'file_name': file_name,
                         'scan_key': scan_key,
@@ -246,49 +258,111 @@ class SignalSequencePreparation:
         
         return beam_sequences
     
-    def visualize_sequence(self, sequence_idx, save_path=None):
+    def visualize_sequence(self, sequence_idx, save_path=None, random_seed=None):
         """
         Visualize a signal sequence with annotations.
         
         Args:
             sequence_idx (int): Index of the sequence to visualize
             save_path (str, optional): Path to save the visualization
+            random_seed (int, optional): Random seed for reproducibility
         """
         if sequence_idx >= len(self.all_sequences):
             print(f"Sequence index {sequence_idx} out of range")
             return
             
-        sequence = list(self.all_sequences.values())[sequence_idx]
-        annotations = list(self.all_annotations.values())[sequence_idx]
+        sequence_name = list(self.all_sequences.keys())[sequence_idx]
+        sequence = self.all_sequences[sequence_name]
+        annotations = self.all_annotations[sequence_name]
         
-        scan_key = list(sequence.keys())[0]
+        # Find a scan key that has defects
+        scan_keys_with_defects = []
+        for scan_key in sequence.keys():
+            if scan_key in annotations and len(annotations[scan_key]) > 0:
+                scan_keys_with_defects.append(scan_key)
+        
+        if scan_keys_with_defects:
+            # If we have scan keys with defects, choose one randomly
+            if random_seed is not None:
+                np.random.seed(random_seed)
+            scan_key = np.random.choice(scan_keys_with_defects)
+        else:
+            # If no scan keys have defects, just take the first one
+            scan_key = list(sequence.keys())[0]
+        
         signals = sequence[scan_key]
+        
+        # Find signals that contain defects
+        signals_with_defects = set()
+        if scan_key in annotations:
+            for defect in annotations[scan_key]:
+                beam_start, beam_end = defect["bbox"][0], defect["bbox"][1]
+                for i in range(len(signals)):
+                    # Check if this signal index is within the beam range
+                    signal_idx = i
+                    beam_position = signal_idx / len(signals)
+                    if beam_start <= beam_position <= beam_end:
+                        signals_with_defects.add(i)
+        
+        # Choose which signals to display
+        max_signals = 10
+        if signals_with_defects:
+            # Start with signals that have defects
+            display_indices = list(signals_with_defects)
+            # If we have fewer than max_signals with defects, add some without defects
+            if len(display_indices) < max_signals:
+                remaining_indices = [i for i in range(len(signals)) if i not in signals_with_defects]
+                if remaining_indices:
+                    # Randomly select remaining indices
+                    additional_indices = np.random.choice(
+                        remaining_indices, 
+                        size=min(max_signals - len(display_indices), len(remaining_indices)),
+                        replace=False
+                    )
+                    display_indices.extend(additional_indices)
+            # If we have more than max_signals with defects, randomly select max_signals
+            elif len(display_indices) > max_signals:
+                display_indices = np.random.choice(display_indices, size=max_signals, replace=False)
+            # Sort the indices for display
+            display_indices = sorted(display_indices)
+        else:
+            # If no signals have defects, just take the first max_signals
+            display_indices = list(range(min(max_signals, len(signals))))
         
         plt.figure(figsize=(15, 10))
         
-        for i, signal in enumerate(signals[:min(10, len(signals))]):
-            plt.subplot(min(10, len(signals)), 1, i+1)
+        # Add main title with sequence name and scan key
+        plt.suptitle(f"Sequence: {sequence_name}, Scan Key: {scan_key}", fontsize=16)
+        
+        for i, signal_idx in enumerate(display_indices):
+            plt.subplot(len(display_indices), 1, i+1)
+            signal = signals[signal_idx]
             plt.plot(signal)
             
             if scan_key in annotations:
                 for defect in annotations[scan_key]:
-                    # Original values from JSON file
-                    original_defect_start = defect["bbox"][2]
-                    original_defect_end = defect["bbox"][3]
+                    # Check if this signal index is within the beam range
+                    beam_start, beam_end = defect["bbox"][0], defect["bbox"][1]
+                    beam_position = signal_idx / len(signals)
                     
-                    # Calculated values for visualization
-                    defect_start = int(original_defect_start * len(signal))
-                    defect_end = int(original_defect_end * len(signal))
-                    
-                    plt.axvspan(defect_start, defect_end, alpha=0.3, color='red')
-                    plt.text(defect_start, max(signal), 
-                             f"{defect['label']}\nOrig: {original_defect_start:.4f}-{original_defect_end:.4f}\nCalc: {defect_start}-{defect_end}", 
-                             fontsize=8)
+                    if beam_start <= beam_position <= beam_end:
+                        # Original values from JSON file
+                        original_defect_start = defect["bbox"][2]
+                        original_defect_end = defect["bbox"][3]
+                        
+                        # Calculated values for visualization
+                        defect_start = int(original_defect_start * len(signal))
+                        defect_end = int(original_defect_end * len(signal))
+                        
+                        plt.axvspan(defect_start, defect_end, alpha=0.3, color='red')
+                        plt.text(defect_start, max(signal), 
+                                f"{defect['label']}\nOrig: {original_defect_start:.4f}-{original_defect_end:.4f}\nCalc: {defect_start}-{defect_end}", 
+                                fontsize=8)
             
-            plt.title(f"Signal {i}")
+            plt.title(f"Signal {signal_idx}")
             plt.grid(True)
         
-        plt.tight_layout()
+        plt.tight_layout(rect=[0, 0, 1, 0.95])  # Adjust layout to make room for suptitle
         
         if save_path:
             plt.savefig(save_path)
@@ -379,7 +453,11 @@ if __name__ == "__main__":
     prep = SignalSequencePreparation(ds_folder, output_folder, seq_length=50)
     sequences, annotations = prep.create_signal_sequences()
 
-    prep.visualize_sequence(0, save_path=os.path.join(output_folder, "sequence_example.png"))
+    # Try different random seeds until we find one that shows defects
+    for seed in range(10):
+        prep.visualize_sequence(np.random.randint(0, len(prep.all_sequences)), 
+                               save_path=os.path.join(output_folder, f"sequence_example_{seed}.png"),
+                               random_seed=seed)
 
     dataset = SignalSequenceDataset(os.path.join(output_folder, "signal_sequences.pkl"))
     print(f"Dataset size: {len(dataset)}")
