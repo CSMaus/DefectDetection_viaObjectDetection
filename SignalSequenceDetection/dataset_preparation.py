@@ -266,18 +266,15 @@ class SignalSequencePreparation:
         sequence = list(self.all_sequences.values())[sequence_idx]
         annotations = list(self.all_annotations.values())[sequence_idx]
         
-        # Get first scan key
         scan_key = list(sequence.keys())[0]
         signals = sequence[scan_key]
         
-        # Plot signals
         plt.figure(figsize=(15, 10))
         
         for i, signal in enumerate(signals[:min(10, len(signals))]):
             plt.subplot(min(10, len(signals)), 1, i+1)
             plt.plot(signal)
             
-            # Add annotations if available
             if scan_key in annotations:
                 for defect in annotations[scan_key]:
                     defect_start = int(defect["bbox"][2] * len(signal))
@@ -368,23 +365,19 @@ class SignalSequenceDataset(Dataset):
 
 
 if __name__ == "__main__":
-    # Example usage
-    ds_folder = "WOT-20250522(auto)"
+    # ds_folder = "WOT-20250522(auto)"
+    ds_folder = "/Users/kseni/Documents/GitHub/DefectDetection_viaObjectDetection/D-Fine/ds_manipulations/WOT-20250522(auto)"
     output_folder = "signal_dataset"
-    
-    # Create signal sequences
+
     prep = SignalSequencePreparation(ds_folder, output_folder, seq_length=50)
     sequences, annotations = prep.create_signal_sequences()
-    
-    # Visualize a sequence
+
     prep.visualize_sequence(0, save_path=os.path.join(output_folder, "sequence_example.png"))
-    
-    # Create dataset
+
     dataset = SignalSequenceDataset(os.path.join(output_folder, "signal_sequences.pt"))
     print(f"Dataset size: {len(dataset)}")
     print(f"Label map: {dataset.label_map}")
-    
-    # Test loading a sample
+
     sample = dataset[0]
     print(f"Sample signals shape: {sample['signals'].shape}")
     print(f"Sample targets: {len(sample['targets'])}")
