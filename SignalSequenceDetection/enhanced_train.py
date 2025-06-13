@@ -15,6 +15,35 @@ from dataset_preparation import SignalSequenceDataset
 from enhanced_model import EnhancedSignalSequenceDetector
 
 
+def collate_fn(batch):
+    """
+    Custom collate function to handle variable-length sequences and complex target structures.
+    
+    Args:
+        batch: List of samples from the dataset
+        
+    Returns:
+        Collated batch with consistent structure
+    """
+    # Extract signals and targets
+    signals = [item['signals'] for item in batch]
+    targets = [item['targets'] for item in batch]
+    
+    # Get other metadata
+    file_names = [item['file_name'] for item in batch]
+    scan_keys = [item['scan_key'] for item in batch]
+    
+    # Stack signals (they should all have the same shape after padding)
+    signals = torch.stack(signals)
+    
+    return {
+        'signals': signals,
+        'targets': targets,
+        'file_name': file_names,
+        'scan_key': scan_keys
+    }
+
+
 def train_model(
     model,
     train_loader,
@@ -398,6 +427,35 @@ def parse_arguments():
     return parser.parse_args()
 
 
+def collate_fn(batch):
+    """
+    Custom collate function to handle variable-length sequences and complex target structures.
+
+    Args:
+        batch: List of samples from the dataset
+
+    Returns:
+        Collated batch with consistent structure
+    """
+    # Extract signals and targets
+    signals = [item['signals'] for item in batch]
+    targets = [item['targets'] for item in batch]
+
+    # Get other metadata
+    file_names = [item['file_name'] for item in batch]
+    scan_keys = [item['scan_key'] for item in batch]
+
+    # Stack signals (they should all have the same shape after padding)
+    signals = torch.stack(signals)
+
+    return {
+        'signals': signals,
+        'targets': targets,
+        'file_name': file_names,
+        'scan_key': scan_keys
+    }
+
+
 def main(args):
     torch.manual_seed(42)
     np.random.seed(42)
@@ -434,7 +492,8 @@ def main(args):
         batch_size=args.batch_size,
         shuffle=True,
         num_workers=4,
-        pin_memory=True
+        pin_memory=True,
+        collate_fn=collate_fn
     )
     
     val_loader = DataLoader(
@@ -442,7 +501,8 @@ def main(args):
         batch_size=args.batch_size,
         shuffle=False,
         num_workers=4,
-        pin_memory=True
+        pin_memory=True,
+        collate_fn=collate_fn
     )
     
     test_loader = DataLoader(
@@ -450,7 +510,8 @@ def main(args):
         batch_size=args.batch_size,
         shuffle=False,
         num_workers=4,
-        pin_memory=True
+        pin_memory=True,
+        collate_fn=collate_fn
     )
     
     sample_batch = next(iter(train_loader))
@@ -545,4 +606,5 @@ if __name__ == "__main__":
     else:
         cmd_args = parse_arguments()
         main(cmd_args)
+
 

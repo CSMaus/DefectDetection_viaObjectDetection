@@ -488,7 +488,7 @@ class EnhancedSignalSequenceDetector(nn.Module):
         self.detection_head = EnhancedDefectDetectionHead(d_model=d_model, num_classes=num_classes)
         
         # Cross-attention for sequence-level context
-        self.cross_attention = nn.MultiheadAttention(d_model, nhead=8, dropout=0.1, batch_first=True)
+        self.cross_attention = nn.MultiheadAttention(d_model, num_heads=8, dropout=0.1, batch_first=True)
         self.cross_norm = nn.LayerNorm(d_model)
         
         # Sequence-level feature integration
@@ -503,7 +503,7 @@ class EnhancedSignalSequenceDetector(nn.Module):
         """
         Args:
             x: Tensor, shape [batch_size, seq_len, signal_length]
-            targets: List of dicts with 'label' and position information
+            targets: Dictionary or list with target information
         Returns:
             If targets is None:
                 dict with predictions
@@ -594,7 +594,7 @@ class EnhancedSignalSequenceDetector(nn.Module):
             position_uncertainty: Tensor, shape [batch_size, seq_len, 2]
             anomaly_scores: Tensor, shape [batch_size, seq_len, 1]
             anomaly_uncertainty: Tensor, shape [batch_size, seq_len, 1]
-            targets: List of dicts with 'label' and position information
+            targets: Dictionary with targets information
         
         Returns:
             dict with loss components
@@ -606,23 +606,31 @@ class EnhancedSignalSequenceDetector(nn.Module):
         target_classes = torch.zeros((batch_size, seq_len), dtype=torch.long, device=device)
         target_positions = torch.zeros((batch_size, seq_len, 2), dtype=torch.float32, device=device)
         
-        # Fill target tensors
-        for b in range(batch_size):
-            for i, target in enumerate(targets[b]):
-                if i < seq_len:
-                    target_classes[b, i] = target['label']
+        # Check the structure of targets and adapt accordingly
+        if isinstance(targets, list):
+            # Handle list of dictionaries (one dict per batch item)
+            for b in range(batch_size):
+                if b < len(targets):
+                    batch_targets = targets[b]
                     
-                    # Extract defect start and end positions within the signal
-                    if target['label'] > 0:  # If it's a defect (not "Health")
-                        if torch.is_tensor(target['defect_position']):
-                            if target['defect_position'].numel() >= 2:
-                                # The defect positions are start and end positions in the signal
-                                target_positions[b, i, 0] = target['defect_position'][0]  # defect start position
-                                target_positions[b, i, 1] = target['defect_position'][1]  # defect end position
-                        else:
-                            # Handle case where defect_position might be a list or numpy array
-                            target_positions[b, i, 0] = target['defect_position'][0]  # defect start position
-                            target_positions[b, i, 1] = target['defect_position'][1]  # defect end position
+                    # Handle different target structures
+                    if isinstance(batch_targets, list):
+                        # List of targets for this batch item
+                        for i, target in enumerate(batch_targets):
+                            if i < seq_len:
+                                self._process_single_target(target, target_classes, target_positions, b, i)
+                    elif isinstance(batch_targets, dict):
+                        # Single target dictionary with multiple entries
+                        if 'targets' in batch_targets and isinstance(batch_targets['targets'], list):
+                            for i, target in enumerate(batch_targets['targets']):
+                                if i < seq_len:
+                                    self._process_single_target(target, target_classes, target_positions, b, i)
+        elif isinstance(targets, dict):
+            # Handle dictionary with 'targets' key
+            if 'targets' in targets and isinstance(targets['targets'], list):
+                for i, target in enumerate(targets['targets']):
+                    if i < seq_len:
+                        self._process_single_target(target, target_classes, target_positions, 0, i)
         
         # Classification loss with uncertainty weighting
         # Flatten for loss calculation
@@ -689,6 +697,46 @@ class EnhancedSignalSequenceDetector(nn.Module):
             'uncertainty_loss': uncertainty_loss,
             'total_loss': weighted_cls_loss + weighted_pos_loss + 0.1 * anomaly_consistency_loss + 0.05 * uncertainty_loss
         }
+    
+    def _process_single_target(self, target, target_classes, target_positions, batch_idx, seq_idx):
+        """
+        Process a single target and update the target tensors.
+        
+        Args:
+            target: Dictionary with target information
+            target_classes: Tensor to update with class information
+            target_positions: Tensor to update with position information
+            batch_idx: Batch index
+            seq_idx: Sequence index
+        """
+        # Process class label
+        if 'label' in target:
+            if isinstance(target['label'], str):
+                # Default to 0 (assuming 0 is the first class)
+                target_classes[batch_idx, seq_idx] = 0
+            else:
+                target_classes[batch_idx, seq_idx] = target['label']
+        
+        # Process defect position
+        if target_classes[batch_idx, seq_idx] > 0:  # If it's a defect (not "Health")
+            if 'defect_position' in target:
+                if torch.is_tensor(target['defect_position']):
+                    if target['defect_position'].numel() >= 2:
+                        target_positions[batch_idx, seq_idx, 0] = target['defect_position'][0]
+                        target_positions[batch_idx, seq_idx, 1] = target['defect_position'][1]
+                else:
+                    # Handle case where defect_position might be a list or numpy array
+                    target_positions[batch_idx, seq_idx, 0] = target['defect_position'][0]
+                    target_positions[batch_idx, seq_idx, 1] = target['defect_position'][1]
+            elif 'bbox' in target:
+                # Backward compatibility with old format
+                if torch.is_tensor(target['bbox']):
+                    if target['bbox'].numel() >= 4:
+                        target_positions[batch_idx, seq_idx, 0] = target['bbox'][2]
+                        target_positions[batch_idx, seq_idx, 1] = target['bbox'][3]
+                else:
+                    target_positions[batch_idx, seq_idx, 0] = target['bbox'][2]
+                    target_positions[batch_idx, seq_idx, 1] = target['bbox'][3]
     
     def predict(self, x, threshold=0.5):
         """
