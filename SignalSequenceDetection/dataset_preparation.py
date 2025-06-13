@@ -163,25 +163,22 @@ class SignalSequencePreparation:
         for json_file in tqdm(json_files, desc="Processing JSON files", unit="file"):
             base_name = os.path.splitext(json_file)[0]
             
-            # Get sequences and annotations from JSON file
             seq, ann, blims = self.get_datafile_sequences(json_file)
             
             # Normalize annotations
             ann = self.normalize_annotations(ann, blims)
             
-            # Store sequences and annotations
             self.all_sequences[base_name] = seq
             self.all_annotations[base_name] = ann
         
-        # Create beam-based sequences
         beam_sequences = self.create_beam_sequences()
         
-        # Save annotations
         with open(os.path.join(self.output_folder, "signal_annotations.json"), "w") as f:
             json.dump(self.all_annotations, f, indent=2)
             
-        # Save sequences
-        torch.save(beam_sequences, os.path.join(self.output_folder, "signal_sequences.pt"))
+        with open(os.path.join(self.output_folder, "signal_sequences.pkl"), 'wb') as f:
+            import pickle
+            pickle.dump(beam_sequences, f)
         
         print(f"Number of signals with values only zeroes: {self.number_false_signals}")
         print(f"Created {len(beam_sequences)} signal sequences")
@@ -206,10 +203,8 @@ class SignalSequencePreparation:
                     self.number_false_signals += 1
                     continue
                 
-                # Get annotations for this scan
                 annotations = self.all_annotations[file_name].get(scan_key, [])
                 
-                # Create sequences of seq_length signals
                 num_signals = len(signals)
                 
                 if num_signals <= self.seq_length:
@@ -277,10 +272,18 @@ class SignalSequencePreparation:
             
             if scan_key in annotations:
                 for defect in annotations[scan_key]:
-                    defect_start = int(defect["bbox"][2] * len(signal))
-                    defect_end = int(defect["bbox"][3] * len(signal))
+                    # Original values from JSON file
+                    original_defect_start = defect["bbox"][2]
+                    original_defect_end = defect["bbox"][3]
+                    
+                    # Calculated values for visualization
+                    defect_start = int(original_defect_start * len(signal))
+                    defect_end = int(original_defect_end * len(signal))
+                    
                     plt.axvspan(defect_start, defect_end, alpha=0.3, color='red')
-                    plt.text(defect_start, max(signal), defect["label"], fontsize=8)
+                    plt.text(defect_start, max(signal), 
+                             f"{defect['label']}\nOrig: {original_defect_start:.4f}-{original_defect_end:.4f}\nCalc: {defect_start}-{defect_end}", 
+                             fontsize=8)
             
             plt.title(f"Signal {i}")
             plt.grid(True)
@@ -305,7 +308,10 @@ class SignalSequenceDataset(Dataset):
             sequences_file (str): Path to the sequences file
             transform (callable, optional): Optional transform to be applied on a sample
         """
-        self.sequences = torch.load(sequences_file)
+        with open(sequences_file, 'rb') as f:
+            import pickle
+            self.sequences = pickle.load(f)
+            
         self.transform = transform
         
         # Extract all unique labels
@@ -333,7 +339,7 @@ class SignalSequenceDataset(Dataset):
             # Default to 'Health' class
             target = {
                 'label': self.label_map['Health'],
-                'bbox': torch.zeros(4, dtype=torch.float32)
+                'defect_position': torch.zeros(2, dtype=torch.float32)
             }
             
             # Check if there's a defect in this signal
@@ -348,7 +354,8 @@ class SignalSequenceDataset(Dataset):
                     
                     if beam_start <= beam_position <= beam_end:
                         target['label'] = self.label_map[annot['label']]
-                        target['bbox'] = torch.tensor([0, 0, defect_start, defect_end], dtype=torch.float32)
+                        # Store defect start and end positions within the signal
+                        target['defect_position'] = torch.tensor([defect_start, defect_end], dtype=torch.float32)
                         break
             
             targets.append(target)
@@ -374,7 +381,7 @@ if __name__ == "__main__":
 
     prep.visualize_sequence(0, save_path=os.path.join(output_folder, "sequence_example.png"))
 
-    dataset = SignalSequenceDataset(os.path.join(output_folder, "signal_sequences.pt"))
+    dataset = SignalSequenceDataset(os.path.join(output_folder, "signal_sequences.pkl"))
     print(f"Dataset size: {len(dataset)}")
     print(f"Label map: {dataset.label_map}")
 

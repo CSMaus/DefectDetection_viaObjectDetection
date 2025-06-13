@@ -614,15 +614,15 @@ class EnhancedSignalSequenceDetector(nn.Module):
                     
                     # Extract defect start and end positions within the signal
                     if target['label'] > 0:  # If it's a defect (not "Health")
-                        if torch.is_tensor(target['bbox']):
-                            if target['bbox'].numel() >= 4:
-                                # The defect positions are the last two values in bbox
-                                target_positions[b, i, 0] = target['bbox'][2]  # defect start position
-                                target_positions[b, i, 1] = target['bbox'][3]  # defect end position
+                        if torch.is_tensor(target['defect_position']):
+                            if target['defect_position'].numel() >= 2:
+                                # The defect positions are start and end positions in the signal
+                                target_positions[b, i, 0] = target['defect_position'][0]  # defect start position
+                                target_positions[b, i, 1] = target['defect_position'][1]  # defect end position
                         else:
-                            # Handle case where bbox might be a list or numpy array
-                            target_positions[b, i, 0] = target['bbox'][2]  # defect start position
-                            target_positions[b, i, 1] = target['bbox'][3]  # defect end position
+                            # Handle case where defect_position might be a list or numpy array
+                            target_positions[b, i, 0] = target['defect_position'][0]  # defect start position
+                            target_positions[b, i, 1] = target['defect_position'][1]  # defect end position
         
         # Classification loss with uncertainty weighting
         # Flatten for loss calculation

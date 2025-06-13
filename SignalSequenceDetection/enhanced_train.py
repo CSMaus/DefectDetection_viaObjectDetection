@@ -323,7 +323,7 @@ def calculate_metrics(predictions, targets):
                 target_defects.append({
                     'position': t['position'] if 'position' in t else 0,
                     'class': t['label'],
-                    'defect_position': t['bbox'][2:4].cpu().numpy() if torch.is_tensor(t['bbox']) else t['bbox'][2:4]
+                    'defect_position': t['defect_position'].cpu().numpy() if torch.is_tensor(t['defect_position']) else t['defect_position']
                 })
         
         matched_targets = set()
@@ -406,7 +406,7 @@ def main(args):
     print(f"Using device: {device}")
     
     data_dir = args.data_dir
-    sequences_file = os.path.join(data_dir, "signal_sequences.pt")
+    sequences_file = os.path.join(data_dir, "signal_sequences.pkl")
     save_dir = os.path.join(data_dir, "enhanced_checkpoints", datetime.now().strftime("%Y%m%d_%H%M%S"))
     
     if not os.path.exists(save_dir):
