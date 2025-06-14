@@ -1,7 +1,7 @@
 import torch.nn as nn
 import torch
 
-
+# Now I want you to check all newly created files, compare them with old model MultiSignalClassifier_N and check the training process - it shoud be same as in training_01.py. Also, note that even if we are loading data from Json file and not from folders, the structure of dataset should be same
 
 class RelativePositionEncoding(nn.Module):
     def __init__(self, max_len, d_model):
