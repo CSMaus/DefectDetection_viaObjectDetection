@@ -80,7 +80,7 @@ class MultiScaleSignalEncoder(nn.Module):
         )
         
         # Adaptive pooling to fixed size
-        self.pool = nn.AdaptiveAvgPool1d(d_model)
+        self.pool = nn.AdaptiveAvgPool1d(1)
         
         # Final projection
         self.projection = nn.Sequential(
@@ -110,8 +110,8 @@ class MultiScaleSignalEncoder(nn.Module):
         # Concatenate multi-scale features
         x_concat = torch.cat([x_small, x_medium, x_large, x_xlarge], dim=1)
         
-        # Apply adaptive pooling
-        x_pooled = self.pool(x_concat)
+        # Apply adaptive pooling (reduces to single value per channel)
+        x_pooled = self.pool(x_concat).squeeze(-1)
         
         # Reshape to [batch_size, seq_len, d_model]
         x_reshaped = x_pooled.view(batch_size, seq_len, -1)

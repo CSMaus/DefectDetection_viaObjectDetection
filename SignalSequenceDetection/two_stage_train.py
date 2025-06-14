@@ -51,7 +51,7 @@ def train_model(
     optimizer,
     scheduler,
     num_epochs=20,
-    device='cuda',
+    device='cpu',
     save_dir='checkpoints',
     log_interval=10,
     patience=5
@@ -447,12 +447,10 @@ def main(args):
     with open(os.path.join(save_dir, 'args.json'), 'w') as f:
         json.dump(vars(args), f, indent=2)
     
-    # Load dataset
     dataset = SignalSequenceDataset(args.data_path)
     print(f"Dataset size: {len(dataset)}")
     print(f"Label map: {dataset.label_map}")
     
-    # Split dataset
     train_size = int(0.8 * len(dataset))
     val_size = int(0.1 * len(dataset))
     test_size = len(dataset) - train_size - val_size
@@ -498,7 +496,6 @@ def main(args):
     sample_batch = next(iter(train_loader))
     signal_length = sample_batch['signals'].shape[2]
     
-    # Create model
     model = TwoStageDefectDetector(
         signal_length=signal_length,
         d_model=args.d_model,
@@ -559,37 +556,54 @@ def main(args):
     for k, v in metrics.items():
         print(f"  {k}: {v:.4f}")
     
-    # Save metrics
     with open(os.path.join(save_dir, 'test_metrics.json'), 'w') as f:
         json.dump(metrics, f, indent=2)
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Train a two-stage defect detection model")
+    if len(sys.argv) == 1:
+        config = {
+            'data_path': 'signal_dataset_38/signal_sequences.pkl',
+            'save_dir': 'two_stage_models',
+            'batch_size': 16,  # todo: set 16
+            'epochs': 10,
+            'lr': 1e-4,
+            'patience': 5,
+            'device': 'cuda' if torch.cuda.is_available() else 'cpu',
+            'seed': 42,
+            'd_model': 128
+        }
+
+        class Args:
+            pass
+        c_args = Args()
+        for key, value in config.items():
+            setattr(c_args, key, value)
+
+
+    else:
+        parser = argparse.ArgumentParser(description="Train a two-stage defect detection model")
+
+        parser.add_argument("--data_path", type=str, default="signal_dataset_38/signal_sequences.pkl",
+                            help="Path to the dataset file")
+        parser.add_argument("--save_dir", type=str, default="models",
+                            help="Directory to save models")
+        parser.add_argument("--batch_size", type=int, default=8,
+                            help="Batch size for training")
+        parser.add_argument("--epochs", type=int, default=30,
+                            help="Number of epochs to train")
+        parser.add_argument("--lr", type=float, default=1e-4,
+                            help="Learning rate")
+        parser.add_argument("--patience", type=int, default=5,
+                            help="Patience for early stopping")
+        parser.add_argument("--d_model", type=int, default=128,
+                            help="Model dimension")
+        parser.add_argument("--device", type=str, default="cuda",
+                            help="Device to use (cuda or cpu)")
+        parser.add_argument("--seed", type=int, default=42,
+                            help="Random seed")
+        c_args = parser.parse_args()
+        torch.manual_seed(c_args.seed)
+        np.random.seed(c_args.seed)
     
-    parser.add_argument("--data_path", type=str, default="signal_dataset/signal_sequences.pkl",
-                        help="Path to the dataset file")
-    parser.add_argument("--save_dir", type=str, default="models",
-                        help="Directory to save models")
-    parser.add_argument("--batch_size", type=int, default=8,
-                        help="Batch size for training")
-    parser.add_argument("--epochs", type=int, default=30,
-                        help="Number of epochs to train")
-    parser.add_argument("--lr", type=float, default=1e-4,
-                        help="Learning rate")
-    parser.add_argument("--patience", type=int, default=5,
-                        help="Patience for early stopping")
-    parser.add_argument("--d_model", type=int, default=128,
-                        help="Model dimension")
-    parser.add_argument("--device", type=str, default="cuda",
-                        help="Device to use (cuda or cpu)")
-    parser.add_argument("--seed", type=int, default=42,
-                        help="Random seed")
-    
-    args = parser.parse_args()
-    
-    # Set random seed
-    torch.manual_seed(args.seed)
-    np.random.seed(args.seed)
-    
-    main(args)
+    main(c_args)

@@ -446,9 +446,9 @@ class SignalSequenceDataset(Dataset):
 
 
 if __name__ == "__main__":
-    # ds_folder = "WOT-20250522(auto)"
-    ds_folder = "/Users/kseni/Documents/GitHub/DefectDetection_viaObjectDetection/D-Fine/ds_manipulations/WOT-20250522(auto)"
-    output_folder = "signal_dataset"
+    ds_folder = "json_data/"
+    # ds_folder = "/Users/kseni/Documents/GitHub/DefectDetection_viaObjectDetection/D-Fine/ds_manipulations/WOT-20250522(auto)"
+    output_folder = "signal_dataset_38"
 
     prep = SignalSequencePreparation(ds_folder, output_folder, seq_length=50)
     sequences, annotations = prep.create_signal_sequences()

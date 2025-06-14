@@ -31,3 +31,4 @@
 *.pyc
 /D-Fine/ds_manipulations
 *.pkl
+/SignalSequenceDetection/signal_dataset_38
