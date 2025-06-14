@@ -209,14 +209,14 @@ class SignalVisualizerApp(QMainWindow):
         # Create the full sequences with padding to 50 signals
         prep.create_signal_sequences()
         
-        # Get the beam sequences for this file
+        # Get the beam sequences for this file - only those containing objects
         beam_sequences = []
         for seq in prep.create_beam_sequences():
             if seq['file_name'] == os.path.splitext(json_file)[0]:
                 beam_sequences.append(seq)
         
         if not beam_sequences:
-            self.show_error(f"No sequences found for {json_file}")
+            self.show_error(f"No sequences with objects found for {json_file}")
             return
         
         # Convert to the format expected by the visualizer

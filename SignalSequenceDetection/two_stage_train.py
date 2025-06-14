@@ -450,6 +450,7 @@ def main(args):
     dataset = SignalSequenceDataset(args.data_path)
     print(f"Dataset size: {len(dataset)}")
     print(f"Label map: {dataset.label_map}")
+    print(f"All sequences contain objects (defects)")
     
     train_size = int(0.8 * len(dataset))
     val_size = int(0.1 * len(dataset))
@@ -563,10 +564,10 @@ def main(args):
 if __name__ == "__main__":
     if len(sys.argv) == 1:
         config = {
-            'data_path': 'signal_dataset_38/signal_sequences.pkl',
-            'save_dir': 'two_stage_models',
+            'data_path': 'signal_dataset_defected/signal_sequences.pkl',
+            'save_dir': 'two_stage_models_defected',
             'batch_size': 16,  # todo: set 16
-            'epochs': 10,
+            'epochs': 5,
             'lr': 1e-4,
             'patience': 5,
             'device': 'cuda' if torch.cuda.is_available() else 'cpu',

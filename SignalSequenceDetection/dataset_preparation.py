@@ -188,11 +188,14 @@ class SignalSequencePreparation:
     def create_beam_sequences(self):
         """
         Create sequences of signals for each beam, ensuring all have the same length.
+        Only include sequences that contain objects (defects).
         
         Returns:
-            list: List of sequences
+            list: List of sequences containing objects
         """
         beam_sequences = []
+        sequences_with_objects = 0
+        sequences_without_objects = 0
         
         # Process each file
         for file_name, sequences in self.all_sequences.items():
@@ -205,6 +208,15 @@ class SignalSequencePreparation:
                 
                 annotations = self.all_annotations[file_name].get(scan_key, [])
                 
+                # Check if this sequence contains any objects (defects)
+                has_objects = len(annotations) > 0
+                
+                # Skip sequences without objects
+                if not has_objects:
+                    sequences_without_objects += 1
+                    continue
+                
+                sequences_with_objects += 1
                 num_signals = len(signals)
                 
                 if num_signals < self.seq_length:
@@ -217,7 +229,8 @@ class SignalSequencePreparation:
                         'scan_key': scan_key,
                         'signals': padded_signals,
                         'annotations': annotations,
-                        'original_length': num_signals  # Store original length for reference
+                        'original_length': num_signals,  # Store original length for reference
+                        'has_objects': True
                     })
                 elif num_signals == self.seq_length:
                     # Use as is
@@ -225,7 +238,8 @@ class SignalSequencePreparation:
                         'file_name': file_name,
                         'scan_key': scan_key,
                         'signals': signals,
-                        'annotations': annotations
+                        'annotations': annotations,
+                        'has_objects': True
                     })
                 else:
                     # Create overlapping sequences to use all signals
@@ -236,25 +250,65 @@ class SignalSequencePreparation:
                     for start_idx in range(0, num_signals - self.seq_length + 1, step_size):
                         end_idx = start_idx + self.seq_length
                         
-                        beam_sequences.append({
-                            'file_name': file_name,
-                            'scan_key': scan_key,
-                            'signals': signals[start_idx:end_idx],
-                            'annotations': annotations,
-                            'start_idx': start_idx,
-                            'end_idx': end_idx
-                        })
+                        # Check if this specific window contains objects
+                        window_has_objects = False
+                        for defect in annotations:
+                            beam_start, beam_end = defect["bbox"][0], defect["bbox"][1]
+                            
+                            # Check if any signal in this window is within the beam range
+                            for i in range(start_idx, end_idx):
+                                beam_position = i / num_signals
+                                if beam_start <= beam_position <= beam_end:
+                                    window_has_objects = True
+                                    break
+                            
+                            if window_has_objects:
+                                break
+                        
+                        if window_has_objects:
+                            beam_sequences.append({
+                                'file_name': file_name,
+                                'scan_key': scan_key,
+                                'signals': signals[start_idx:end_idx],
+                                'annotations': annotations,
+                                'start_idx': start_idx,
+                                'end_idx': end_idx,
+                                'has_objects': True
+                            })
                     
-                    # Add the last sequence if needed
+                    # Add the last sequence if needed and if it contains objects
                     if (num_signals - self.seq_length) % step_size != 0:
-                        beam_sequences.append({
-                            'file_name': file_name,
-                            'scan_key': scan_key,
-                            'signals': signals[-self.seq_length:],
-                            'annotations': annotations,
-                            'start_idx': num_signals - self.seq_length,
-                            'end_idx': num_signals
-                        })
+                        start_idx = num_signals - self.seq_length
+                        end_idx = num_signals
+                        
+                        # Check if this specific window contains objects
+                        window_has_objects = False
+                        for defect in annotations:
+                            beam_start, beam_end = defect["bbox"][0], defect["bbox"][1]
+                            
+                            # Check if any signal in this window is within the beam range
+                            for i in range(start_idx, end_idx):
+                                beam_position = i / num_signals
+                                if beam_start <= beam_position <= beam_end:
+                                    window_has_objects = True
+                                    break
+                            
+                            if window_has_objects:
+                                break
+                        
+                        if window_has_objects:
+                            beam_sequences.append({
+                                'file_name': file_name,
+                                'scan_key': scan_key,
+                                'signals': signals[start_idx:end_idx],
+                                'annotations': annotations,
+                                'start_idx': start_idx,
+                                'end_idx': end_idx,
+                                'has_objects': True
+                            })
+        
+        print(f"Sequences with objects: {sequences_with_objects}")
+        print(f"Sequences without objects (skipped): {sequences_without_objects}")
         
         return beam_sequences
     
@@ -282,56 +336,44 @@ class SignalSequencePreparation:
                 scan_keys_with_defects.append(scan_key)
         
         if scan_keys_with_defects:
-            # If we have scan keys with defects, choose one randomly
             if random_seed is not None:
                 np.random.seed(random_seed)
             scan_key = np.random.choice(scan_keys_with_defects)
         else:
-            # If no scan keys have defects, just take the first one
             scan_key = list(sequence.keys())[0]
         
         signals = sequence[scan_key]
         
-        # Find signals that contain defects
         signals_with_defects = set()
         if scan_key in annotations:
             for defect in annotations[scan_key]:
                 beam_start, beam_end = defect["bbox"][0], defect["bbox"][1]
                 for i in range(len(signals)):
-                    # Check if this signal index is within the beam range
                     signal_idx = i
                     beam_position = signal_idx / len(signals)
                     if beam_start <= beam_position <= beam_end:
                         signals_with_defects.add(i)
         
-        # Choose which signals to display
         max_signals = 10
         if signals_with_defects:
-            # Start with signals that have defects
             display_indices = list(signals_with_defects)
-            # If we have fewer than max_signals with defects, add some without defects
             if len(display_indices) < max_signals:
                 remaining_indices = [i for i in range(len(signals)) if i not in signals_with_defects]
                 if remaining_indices:
-                    # Randomly select remaining indices
                     additional_indices = np.random.choice(
                         remaining_indices, 
                         size=min(max_signals - len(display_indices), len(remaining_indices)),
                         replace=False
                     )
                     display_indices.extend(additional_indices)
-            # If we have more than max_signals with defects, randomly select max_signals
             elif len(display_indices) > max_signals:
                 display_indices = np.random.choice(display_indices, size=max_signals, replace=False)
-            # Sort the indices for display
             display_indices = sorted(display_indices)
         else:
-            # If no signals have defects, just take the first max_signals
             display_indices = list(range(min(max_signals, len(signals))))
         
         plt.figure(figsize=(15, 10))
         
-        # Add main title with sequence name and scan key
         plt.suptitle(f"Sequence: {sequence_name}, Scan Key: {scan_key}", fontsize=16)
         
         for i, signal_idx in enumerate(display_indices):
@@ -346,11 +388,9 @@ class SignalSequencePreparation:
                     beam_position = signal_idx / len(signals)
                     
                     if beam_start <= beam_position <= beam_end:
-                        # Original values from JSON file
                         original_defect_start = defect["bbox"][2]
                         original_defect_end = defect["bbox"][3]
                         
-                        # Calculated values for visualization
                         defect_start = int(original_defect_start * len(signal))
                         defect_end = int(original_defect_end * len(signal))
                         
@@ -362,7 +402,7 @@ class SignalSequencePreparation:
             plt.title(f"Signal {signal_idx}")
             plt.grid(True)
         
-        plt.tight_layout(rect=[0, 0, 1, 0.95])  # Adjust layout to make room for suptitle
+        plt.tight_layout(rect=[0, 0, 1, 0.95])
         
         if save_path:
             plt.savefig(save_path)
@@ -448,12 +488,11 @@ class SignalSequenceDataset(Dataset):
 if __name__ == "__main__":
     ds_folder = "json_data/"
     # ds_folder = "/Users/kseni/Documents/GitHub/DefectDetection_viaObjectDetection/D-Fine/ds_manipulations/WOT-20250522(auto)"
-    output_folder = "signal_dataset_38"
+    output_folder = "signal_dataset_defected"
 
     prep = SignalSequencePreparation(ds_folder, output_folder, seq_length=50)
     sequences, annotations = prep.create_signal_sequences()
 
-    # Try different random seeds until we find one that shows defects
     for seed in range(10):
         prep.visualize_sequence(np.random.randint(0, len(prep.all_sequences)), 
                                save_path=os.path.join(output_folder, f"sequence_example_{seed}.png"),
