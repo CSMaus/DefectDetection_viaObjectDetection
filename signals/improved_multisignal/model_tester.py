@@ -5,7 +5,7 @@ import torch
 import numpy as np
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
                             QComboBox, QPushButton, QLabel, QFileDialog, QFrame, QGridLayout,
-                            QSpinBox, QSplitter)
+                            QSpinBox, QSplitter, QTabWidget)
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
@@ -15,7 +15,7 @@ from improved_model import ImprovedMultiSignalClassifier
 
 
 class PredictionWorker(QThread):
-    """Worker thread for running predictions"""
+    """Worker thread for running predictions on sequences"""
     finished = pyqtSignal(dict)
     progress = pyqtSignal(int, int)
     
@@ -33,67 +33,134 @@ class PredictionWorker(QThread):
         for beam_idx, (beam_key, beam_data) in enumerate(self.json_data.items()):
             self.progress.emit(beam_idx, total_beams)
             
-            # Process each scan key in this beam
-            beam_results = {}
-            for scan_key, scan_data in beam_data.items():
-                # Extract signals
-                signal_keys = sorted(scan_data.keys(), 
-                                    key=lambda x: int(round(float(x.split('_')[0]))))
-                
-                # Process in sequences of seq_length
-                for start_idx in range(0, len(signal_keys), self.seq_length):
-                    end_idx = min(start_idx + self.seq_length, len(signal_keys))
-                    seq_keys = signal_keys[start_idx:end_idx]
-                    
-                    signals = []
-                    labels = []
-                    defect_positions = []
-                    
-                    for signal_key in seq_keys:
-                        signal_info = scan_data[signal_key]
-                        signal = np.array(signal_info['signal'], dtype=np.float32)
-                        signals.append(signal)
-                        
-                        defect_name = signal_key.split('_')[1]
-                        if defect_name == 'Health':
-                            labels.append(0.0)
-                            defect_positions.append([0.0, 0.0])
-                        else:
-                            # Extract defect position from key
-                            defect_range = signal_key.split('_')[2].split('-')
-                            defect_start, defect_end = float(defect_range[0]), float(defect_range[1])
-                            labels.append(1.0)
-                            defect_positions.append([defect_start, defect_end])
-                    
-                    # Pad if needed
-                    if len(signals) < self.seq_length:
-                        pad_length = self.seq_length - len(signals)
-                        signal_length = len(signals[0])
-                        
-                        signals.extend([np.zeros(signal_length, dtype=np.float32) for _ in range(pad_length)])
-                        labels.extend([0.0 for _ in range(pad_length)])
-                        defect_positions.extend([[0.0, 0.0] for _ in range(pad_length)])
-                    
-                    # Convert to tensors
-                    signals_tensor = torch.tensor(signals, dtype=torch.float32).unsqueeze(0).to(self.device)
-                    
-                    # Run prediction
-                    with torch.no_grad():
-                        defect_prob, defect_start, defect_end = self.model(signals_tensor)
-                    
-                    # Store results
-                    for i, signal_key in enumerate(seq_keys):
-                        if i < len(defect_prob[0]):
-                            beam_results[signal_key] = {
-                                'gt_label': labels[i],
-                                'gt_position': defect_positions[i],
-                                'pred_prob': defect_prob[0][i].item(),
-                                'pred_start': defect_start[0][i].item(),
-                                'pred_end': defect_end[0][i].item(),
-                                'signal': signals[i].tolist()
-                            }
+            # Extract all signals for this beam
+            all_signals = []
+            all_labels = []
+            all_defect_positions = []
+            all_signal_keys = []
             
-            results[beam_key] = beam_results
+            # Process beam data which can be either dict or list
+            for scan_key, scan_data in beam_data.items():
+                # Check if scan_data is a dictionary or a list
+                if isinstance(scan_data, dict):
+                    # Dictionary structure
+                    signal_keys = sorted(scan_data.keys(), 
+                                        key=lambda x: int(round(float(x.split('_')[0]))))
+                    
+                    for signal_key in signal_keys:
+                        signal_data = scan_data[signal_key]
+                        
+                        # Extract signal data
+                        if isinstance(signal_data, list):
+                            signal = np.array(signal_data, dtype=np.float32)
+                        elif isinstance(signal_data, dict) and 'signal' in signal_data:
+                            signal = np.array(signal_data['signal'], dtype=np.float32)
+                        else:
+                            try:
+                                signal = np.array(signal_data, dtype=np.float32)
+                            except:
+                                continue
+                        
+                        all_signals.append(signal)
+                        all_signal_keys.append(f"{scan_key}_{signal_key}")
+                        
+                        # Process label and defect position
+                        parts = signal_key.split('_')
+                        if len(parts) >= 2 and parts[1] == 'Health':
+                            all_labels.append(0.0)
+                            all_defect_positions.append([0.0, 0.0])
+                        else:
+                            try:
+                                defect_range = parts[2].split('-')
+                                defect_start, defect_end = float(defect_range[0]), float(defect_range[1])
+                                all_labels.append(1.0)
+                                all_defect_positions.append([defect_start, defect_end])
+                            except:
+                                all_labels.append(1.0)
+                                all_defect_positions.append([0.0, 0.0])
+                
+                elif isinstance(scan_data, list):
+                    # List structure
+                    for i, signal_item in enumerate(scan_data):
+                        # Extract signal data
+                        if isinstance(signal_item, dict) and 'signal' in signal_item:
+                            signal = np.array(signal_item['signal'], dtype=np.float32)
+                            signal_key = str(i)
+                            
+                            # Try to get label information
+                            label = signal_item.get('label', 0.0)
+                            defect_start = signal_item.get('defect_start', 0.0)
+                            defect_end = signal_item.get('defect_end', 0.0)
+                            
+                            all_signals.append(signal)
+                            all_signal_keys.append(f"{scan_key}_{signal_key}")
+                            all_labels.append(float(label))
+                            all_defect_positions.append([float(defect_start), float(defect_end)])
+                        elif isinstance(signal_item, list):
+                            try:
+                                signal = np.array(signal_item, dtype=np.float32)
+                                signal_key = str(i)
+                                
+                                all_signals.append(signal)
+                                all_signal_keys.append(f"{scan_key}_{signal_key}")
+                                all_labels.append(0.0)  # Default to no defect
+                                all_defect_positions.append([0.0, 0.0])
+                            except:
+                                continue
+            
+            # Skip if no signals found
+            if not all_signals:
+                continue
+            
+            # Create sequences from all signals
+            beam_results = {}
+            num_signals = len(all_signals)
+            
+            # Process in sequences of seq_length
+            for start_idx in range(0, num_signals, self.seq_length):
+                end_idx = min(start_idx + self.seq_length, num_signals)
+                seq_signals = all_signals[start_idx:end_idx]
+                seq_keys = all_signal_keys[start_idx:end_idx]
+                seq_labels = all_labels[start_idx:end_idx]
+                seq_defect_positions = all_defect_positions[start_idx:end_idx]
+                
+                # Skip sequences that are too short
+                if len(seq_signals) < 2:
+                    continue
+                
+                # Pad if needed
+                if len(seq_signals) < self.seq_length:
+                    pad_length = self.seq_length - len(seq_signals)
+                    signal_length = len(seq_signals[0])
+                    seq_signals.extend([np.zeros(signal_length, dtype=np.float32) for _ in range(pad_length)])
+                    seq_labels.extend([0.0 for _ in range(pad_length)])
+                    seq_defect_positions.extend([[0.0, 0.0] for _ in range(pad_length)])
+                    # Pad keys with dummy values
+                    seq_keys.extend([f"padding_{i}" for i in range(pad_length)])
+                
+                # Convert to tensor and run prediction
+                signals_tensor = torch.tensor(seq_signals, dtype=torch.float32).unsqueeze(0).to(self.device)
+                
+                with torch.no_grad():
+                    defect_prob, defect_start, defect_end = self.model(signals_tensor)
+                
+                # Store results for each signal in the sequence
+                for i, key in enumerate(seq_keys):
+                    if i < len(defect_prob[0]) and "padding_" not in key:
+                        beam_results[key] = {
+                            'gt_label': seq_labels[i],
+                            'gt_position': seq_defect_positions[i],
+                            'pred_prob': defect_prob[0][i].item(),
+                            'pred_start': defect_start[0][i].item(),
+                            'pred_end': defect_end[0][i].item(),
+                            'signal': seq_signals[i].tolist(),
+                            'sequence_idx': start_idx // self.seq_length,
+                            'position_in_sequence': i
+                        }
+            
+            # Store results for this beam
+            if beam_results:
+                results[beam_key] = beam_results
         
         self.finished.emit(results)
 
@@ -113,6 +180,7 @@ class ModelTesterApp(QMainWindow):
         self.beam_keys = []
         self.scan_keys = []
         self.signal_keys = []
+        self.sequence_indices = []
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         
         # Setup UI
@@ -156,15 +224,15 @@ class ModelTesterApp(QMainWindow):
         self.beam_combo = QComboBox()
         self.beam_combo.currentIndexChanged.connect(self.update_scan_combo)
         
-        # Scan selection
-        self.scan_label = QLabel("Scan:")
-        self.scan_combo = QComboBox()
-        self.scan_combo.currentIndexChanged.connect(self.update_signal_combo)
+        # Sequence selection
+        self.sequence_label = QLabel("Sequence:")
+        self.sequence_combo = QComboBox()
+        self.sequence_combo.currentIndexChanged.connect(self.update_sequence_visualization)
         
         # Signal selection
         self.signal_label = QLabel("Signal:")
         self.signal_combo = QComboBox()
-        self.signal_combo.currentIndexChanged.connect(self.update_visualization)
+        self.signal_combo.currentIndexChanged.connect(self.update_signal_visualization)
         
         # Add controls to layout
         controls_layout.addWidget(self.dir_label, 0, 0)
@@ -178,18 +246,35 @@ class ModelTesterApp(QMainWindow):
         controls_layout.addWidget(self.predict_status, 2, 1, 1, 3)
         controls_layout.addWidget(self.beam_label, 3, 0)
         controls_layout.addWidget(self.beam_combo, 3, 1)
-        controls_layout.addWidget(self.scan_label, 3, 2)
-        controls_layout.addWidget(self.scan_combo, 3, 3)
+        controls_layout.addWidget(self.sequence_label, 3, 2)
+        controls_layout.addWidget(self.sequence_combo, 3, 3)
         controls_layout.addWidget(self.signal_label, 4, 0)
         controls_layout.addWidget(self.signal_combo, 4, 1, 1, 3)
         
-        # Visualization area
-        self.figure = Figure(figsize=(10, 6))
-        self.canvas = FigureCanvas(self.figure)
+        # Tab widget for different visualizations
+        self.tab_widget = QTabWidget()
+        
+        # Sequence visualization tab
+        self.sequence_tab = QWidget()
+        sequence_layout = QVBoxLayout(self.sequence_tab)
+        self.sequence_figure = Figure(figsize=(10, 6))
+        self.sequence_canvas = FigureCanvas(self.sequence_figure)
+        sequence_layout.addWidget(self.sequence_canvas)
+        
+        # Signal visualization tab
+        self.signal_tab = QWidget()
+        signal_layout = QVBoxLayout(self.signal_tab)
+        self.signal_figure = Figure(figsize=(10, 6))
+        self.signal_canvas = FigureCanvas(self.signal_figure)
+        signal_layout.addWidget(self.signal_canvas)
+        
+        # Add tabs
+        self.tab_widget.addTab(self.sequence_tab, "Sequence View")
+        self.tab_widget.addTab(self.signal_tab, "Signal View")
         
         # Add widgets to main layout
         main_layout.addWidget(controls_frame)
-        main_layout.addWidget(self.canvas)
+        main_layout.addWidget(self.tab_widget)
         
         # Set main widget
         self.setCentralWidget(main_widget)
@@ -298,53 +383,88 @@ class ModelTesterApp(QMainWindow):
             self.update_scan_combo(self.beam_combo.currentIndex())
     
     def update_scan_combo(self, index):
-        """Update scan combo box based on selected beam"""
+        """Update sequence combo box based on selected beam"""
         if index < 0 or not self.beam_keys:
             return
         
         beam_key = self.beam_keys[index]
         
         if beam_key in self.prediction_results:
-            # Get unique scan keys from the prediction results
-            signal_keys = list(self.prediction_results[beam_key].keys())
-            scan_keys = set()
-            for key in signal_keys:
-                scan_key = key.split('_')[0]
-                scan_keys.add(scan_key)
+            # Get unique sequence indices from the prediction results
+            sequence_indices = set()
+            for key, result in self.prediction_results[beam_key].items():
+                if 'sequence_idx' in result:
+                    sequence_indices.add(result['sequence_idx'])
             
-            self.scan_keys = sorted(list(scan_keys))
-            self.scan_combo.clear()
-            self.scan_combo.addItems(self.scan_keys)
+            self.sequence_indices = sorted(list(sequence_indices))
+            self.sequence_combo.clear()
+            self.sequence_combo.addItems([f"Sequence {idx}" for idx in self.sequence_indices])
         else:
-            self.scan_combo.clear()
-            self.scan_keys = []
+            self.sequence_combo.clear()
+            self.sequence_indices = []
     
-    def update_signal_combo(self, index):
-        """Update signal combo box based on selected scan"""
-        if index < 0 or not self.scan_keys or self.beam_combo.currentIndex() < 0:
+    def update_sequence_visualization(self, index):
+        """Update visualization for selected sequence"""
+        if index < 0 or not self.sequence_indices or self.beam_combo.currentIndex() < 0:
             return
         
         beam_key = self.beam_keys[self.beam_combo.currentIndex()]
-        scan_key = self.scan_keys[index]
+        sequence_idx = self.sequence_indices[index]
         
         if beam_key in self.prediction_results:
-            # Get signal keys for this beam and scan
+            # Get signals for this sequence
+            sequence_signals = []
+            sequence_labels = []
+            sequence_gt_positions = []
+            sequence_pred_probs = []
+            sequence_pred_positions = []
             signal_keys = []
-            for key in self.prediction_results[beam_key].keys():
-                if key.startswith(f"{scan_key}_"):
-                    signal_keys.append(key)
             
-            self.signal_keys = sorted(signal_keys, 
-                                     key=lambda x: int(round(float(x.split('_')[0]))))
+            for key, result in self.prediction_results[beam_key].items():
+                if result.get('sequence_idx') == sequence_idx:
+                    pos = result.get('position_in_sequence', 0)
+                    # Ensure we have enough space in our lists
+                    while len(sequence_signals) <= pos:
+                        sequence_signals.append(None)
+                        sequence_labels.append(None)
+                        sequence_gt_positions.append(None)
+                        sequence_pred_probs.append(None)
+                        sequence_pred_positions.append(None)
+                        signal_keys.append(None)
+                    
+                    sequence_signals[pos] = result['signal']
+                    sequence_labels[pos] = result['gt_label']
+                    sequence_gt_positions[pos] = result['gt_position']
+                    sequence_pred_probs[pos] = result['pred_prob']
+                    sequence_pred_positions[pos] = [result['pred_start'], result['pred_end']]
+                    signal_keys[pos] = key
+            
+            # Remove None values
+            valid_indices = [i for i, x in enumerate(sequence_signals) if x is not None]
+            sequence_signals = [sequence_signals[i] for i in valid_indices]
+            sequence_labels = [sequence_labels[i] for i in valid_indices]
+            sequence_gt_positions = [sequence_gt_positions[i] for i in valid_indices]
+            sequence_pred_probs = [sequence_pred_probs[i] for i in valid_indices]
+            sequence_pred_positions = [sequence_pred_positions[i] for i in valid_indices]
+            signal_keys = [signal_keys[i] for i in valid_indices]
+            
+            # Update signal combo box
+            self.signal_keys = signal_keys
             self.signal_combo.clear()
-            self.signal_combo.addItems(self.signal_keys)
-        else:
-            self.signal_combo.clear()
-            self.signal_keys = []
+            self.signal_combo.addItems(signal_keys)
+            
+            # Visualize sequence
+            self.visualize_sequence(
+                sequence_signals, 
+                sequence_labels, 
+                sequence_gt_positions, 
+                sequence_pred_probs, 
+                sequence_pred_positions
+            )
     
-    def update_visualization(self, index):
+    def update_signal_visualization(self, index):
         """Update visualization for selected signal"""
-        if index < 0 or not self.signal_keys or self.beam_combo.currentIndex() < 0 or self.scan_combo.currentIndex() < 0:
+        if index < 0 or not self.signal_keys or self.beam_combo.currentIndex() < 0 or self.sequence_combo.currentIndex() < 0:
             return
         
         beam_key = self.beam_keys[self.beam_combo.currentIndex()]
@@ -352,37 +472,97 @@ class ModelTesterApp(QMainWindow):
         
         if beam_key in self.prediction_results and signal_key in self.prediction_results[beam_key]:
             result = self.prediction_results[beam_key][signal_key]
-            
-            # Clear figure
-            self.figure.clear()
-            ax = self.figure.add_subplot(111)
-            
-            # Plot signal
-            signal = np.array(result['signal'])
-            ax.plot(signal, 'b-', alpha=0.7)
-            
-            # Plot ground truth
-            if result['gt_label'] > 0.5:
-                start_idx = int(result['gt_position'][0] * len(signal))
-                end_idx = int(result['gt_position'][1] * len(signal))
-                ax.axvspan(start_idx, end_idx, alpha=0.3, color='green', label='Ground Truth')
-            
-            # Plot prediction
-            if result['pred_prob'] > 0.5:
-                start_idx = int(result['pred_start'] * len(signal))
-                end_idx = int(result['pred_end'] * len(signal))
-                ax.axvspan(start_idx, end_idx, alpha=0.3, color='red', label='Prediction')
-            
-            # Add title and legend
-            ax.set_title(f"Signal: {signal_key}\nPrediction: {result['pred_prob']:.4f}")
-            if (result['gt_label'] > 0.5) or (result['pred_prob'] > 0.5):
-                ax.legend()
-            
-            # Add grid
-            ax.grid(True)
-            
-            # Update canvas
-            self.canvas.draw()
+            self.visualize_signal(result)
+    
+    def visualize_sequence(self, signals, labels, gt_positions, pred_probs, pred_positions):
+        """Visualize a sequence of signals with ground truth and predictions"""
+        # Clear figure
+        self.sequence_figure.clear()
+        
+        # Create a heatmap-style visualization
+        ax = self.sequence_figure.add_subplot(111)
+        
+        # Convert signals to a 2D array
+        signals_array = np.array(signals)
+        
+        # Display as an image
+        im = ax.imshow(signals_array, aspect='auto', cmap='viridis')
+        
+        # Add colorbar
+        self.sequence_figure.colorbar(im, ax=ax, label='Signal Value')
+        
+        # Mark ground truth defects
+        for i, (label, position) in enumerate(zip(labels, gt_positions)):
+            if label > 0.5:  # If it's a defect
+                start, end = position
+                start_idx = int(start * signals_array.shape[1])
+                end_idx = int(end * signals_array.shape[1])
+                rect = plt.Rectangle((start_idx, i - 0.5), end_idx - start_idx, 1, 
+                                    fill=False, edgecolor='red', linewidth=2)
+                ax.add_patch(rect)
+        
+        # Mark predictions
+        for i, (prob, position) in enumerate(zip(pred_probs, pred_positions)):
+            if prob > 0.5:  # If prediction confidence is high enough
+                start, end = position
+                start_idx = int(start * signals_array.shape[1])
+                end_idx = int(end * signals_array.shape[1])
+                rect = plt.Rectangle((start_idx, i - 0.5), end_idx - start_idx, 1, 
+                                    fill=False, edgecolor='blue', linewidth=2)
+                ax.add_patch(rect)
+                ax.text(start_idx, i + 0.3, f"{prob:.2f}", color='blue', fontsize=8)
+        
+        # Add labels and title
+        ax.set_xlabel('Signal Position')
+        ax.set_ylabel('Signal Index')
+        ax.set_title(f'Sequence Visualization - Beam: {self.beam_keys[self.beam_combo.currentIndex()]}, ' +
+                    f'Sequence: {self.sequence_indices[self.sequence_combo.currentIndex()]}')
+        
+        # Add legend
+        from matplotlib.patches import Patch
+        legend_elements = [
+            Patch(facecolor='none', edgecolor='red', label='Ground Truth'),
+            Patch(facecolor='none', edgecolor='blue', label='Prediction')
+        ]
+        ax.legend(handles=legend_elements, loc='upper right')
+        
+        # Update canvas
+        self.sequence_canvas.draw()
+    
+    def visualize_signal(self, result):
+        """Visualize a single signal with ground truth and prediction"""
+        # Clear figure
+        self.signal_figure.clear()
+        
+        # Create plot
+        ax = self.signal_figure.add_subplot(111)
+        
+        # Plot signal
+        signal = np.array(result['signal'])
+        ax.plot(signal, 'b-', alpha=0.7)
+        
+        # Plot ground truth
+        if result['gt_label'] > 0.5:
+            start_idx = int(result['gt_position'][0] * len(signal))
+            end_idx = int(result['gt_position'][1] * len(signal))
+            ax.axvspan(start_idx, end_idx, alpha=0.3, color='green', label='Ground Truth')
+        
+        # Plot prediction
+        if result['pred_prob'] > 0.5:
+            start_idx = int(result['pred_start'] * len(signal))
+            end_idx = int(result['pred_end'] * len(signal))
+            ax.axvspan(start_idx, end_idx, alpha=0.3, color='red', label='Prediction')
+        
+        # Add title and legend
+        ax.set_title(f"Signal: {self.signal_keys[self.signal_combo.currentIndex()]}\nPrediction: {result['pred_prob']:.4f}")
+        if (result['gt_label'] > 0.5) or (result['pred_prob'] > 0.5):
+            ax.legend()
+        
+        # Add grid
+        ax.grid(True)
+        
+        # Update canvas
+        self.signal_canvas.draw()
     
     def show_error(self, message):
         """Show error message"""

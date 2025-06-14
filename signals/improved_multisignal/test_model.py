@@ -111,16 +111,13 @@ def test_on_json_file(model, json_file, seq_length=50):
     """
     device = next(model.parameters()).device
     
-    # Load JSON data
     with open(json_file, 'r') as f:
         data = json.load(f)
     
-    # Process each scan key
     for scan_key, scan_data in data.items():
         print(f"Testing on scan: {scan_key}")
         
-        # Extract signals
-        signal_keys = sorted(scan_data.keys(), 
+        signal_keys = sorted(scan_data.keys(),
                             key=lambda x: int(round(float(x.split('_')[0]))))
         
         signals = []
@@ -138,46 +135,37 @@ def test_on_json_file(model, json_file, seq_length=50):
                 labels.append(0.0)
                 defect_positions.append([0.0, 0.0])
             else:
-                # Extract defect position from key
                 defect_range = signal_key.split('_')[2].split('-')
                 defect_start, defect_end = float(defect_range[0]), float(defect_range[1])
                 labels.append(1.0)
                 defect_positions.append([defect_start, defect_end])
         
-        # Pad sequences if needed
         if len(signals) < seq_length:
             pad_length = seq_length - len(signals)
             signal_length = len(signals[0])
             
-            # Pad with zeros
             signals.extend([np.zeros(signal_length, dtype=np.float32) for _ in range(pad_length)])
             labels.extend([0.0 for _ in range(pad_length)])
             defect_positions.extend([[0.0, 0.0] for _ in range(pad_length)])
         
-        # Convert to tensors
         signals_tensor = torch.tensor(signals, dtype=torch.float32)
         labels_tensor = torch.tensor(labels, dtype=torch.float32)
         defect_positions_tensor = torch.tensor(defect_positions, dtype=torch.float32)
         
-        # Visualize predictions
         visualize_predictions(model, signals_tensor, labels_tensor, defect_positions_tensor)
         
-        # Ask user if they want to continue
         user_input = input("Press Enter to continue to next scan, or 'q' to quit: ")
         if user_input.lower() == 'q':
             break
 
 
 def main():
-    # Configuration
-    model_path = "path/to/best_model.pth"  # Update with actual path
-    json_file = "path/to/test.json"  # Update with actual path
-    
-    # Load model
+    model_path = "models/improved_model_20250615_033905/best_model.pth"
+    json_file = "json_data/WOT-D456_A4_003_Ch-0_D0.5-10.json"
+
     model, device = load_model(model_path)
     print(f"Model loaded on {device}")
     
-    # Test on JSON file
     test_on_json_file(model, json_file)
 
 
