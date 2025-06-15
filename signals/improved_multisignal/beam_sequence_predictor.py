@@ -6,12 +6,14 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
 import sys
 import math
-
+from tabulate import tabulate
 
 from improved_model import ImprovedMultiSignalClassifier
 
+# Configuration - MODIFY THESE VALUES
 JSON_FILE_PATH = 'json_data/WOT-D456_A4_003_Ch-0_D0.5-10.json'
-BEAM_INDEX = 29
+BEAM_INDEX = 29  # Beam index to analyze
+SEQUENCE_INDEX = 0  # Sequence index to analyze
 MODEL_PATH = 'models/improved_model_20250615_033905/best_model.pth'
 SEQ_LENGTH = 50
 
@@ -40,7 +42,8 @@ def load_model(model_path):
     return model, device
 
 def load_sequences(json_path=JSON_FILE_PATH, seq_len=SEQ_LENGTH):
-    """Load sequences from a JSON file"""
+    """Create sequences for each beam index in json file,
+    and make for them ground truth labels and defect positions if label is 1"""
     with open(json_path, 'r') as f:
         data = json.load(f)
 
@@ -58,9 +61,11 @@ def load_sequences(json_path=JSON_FILE_PATH, seq_len=SEQ_LENGTH):
         all_scans_for_beam = {}
         all_lbls_for_beam = {}
         all_defects_for_beam = {}
+
+        scan_idx = 0
         for scan_key in scans_keys_sorted:
             scan_data = data[beam_key][scan_key]
-            scan_idx = int(scan_key.split('_')[0])
+            # scan_idx = int(scan_key.split('_')[0])
 
             all_scans_for_beam[str(scan_idx)] = scan_data
             if scan_key.split('_')[1] == "Health":
@@ -75,6 +80,8 @@ def load_sequences(json_path=JSON_FILE_PATH, seq_len=SEQ_LENGTH):
                 defect_start, defect_end = float(defect_range[0]), float(defect_range[1])
                 # defects_by_beams[str(beam_idx)][str(scan_idx)] = [defect_start, defect_end]
                 all_defects_for_beam[str(scan_idx)] = [defect_start, defect_end]
+
+            scan_idx += 1
 
         # now from all_scans_for_beam we need to create num_of_seqs_for_beam number of sequences
         # first sequences will go just with increasing indexes, but for the last if the number of remaining
@@ -104,237 +111,132 @@ def load_sequences(json_path=JSON_FILE_PATH, seq_len=SEQ_LENGTH):
             labels_by_beams[str(beam_idx)][str(i)] = labels
             defects_by_beams[str(beam_idx)][str(i)] = defects
 
-
     return sequences_by_beams, labels_by_beams, defects_by_beams
 
-def extract_beam_signals(json_file_path, beam_index):
-    """Extract signals for a specific beam from the JSON file"""
-    # Load JSON file
-    with open(json_file_path, 'r') as f:
-        data = json.load(f)
+def run_predictions_for_sequence(model, device, sequence, labels, defects, beam_idx, seq_idx):
+    """Run predictions on a specific sequence and print detailed results"""
+    print(f"\nProcessing Beam {beam_idx}, Sequence {seq_idx}")
     
-    # Get beam keys and select the specified beam
-    beam_keys = list(data.keys())
-    if beam_index >= len(beam_keys):
-        raise ValueError(f"Beam index {beam_index} out of range. Available beams: 0-{len(beam_keys)-1}")
+    # Convert sequence to tensor
+    sequence_tensor = torch.tensor(sequence, dtype=torch.float32).unsqueeze(0).to(device)
     
-    beam_key = beam_keys[beam_index]
-    beam_data = data[beam_key]
+    # Run prediction
+    with torch.no_grad():
+        defect_prob, defect_start, defect_end = model(sequence_tensor)
     
-    print(f"Processing beam: {beam_key}")
-    
-    all_signals = []
-    all_labels = []
-    all_defect_positions = []
-    all_signal_keys = []
-    
-    signal_files = []
-    for scan_key in beam_data.keys():
-        scan_data = beam_data[scan_key]
-        if isinstance(scan_data, dict):
-            for signal_key in scan_data.keys():
-                signal_files.append((scan_key, signal_key))
-        elif isinstance(scan_data, list):
-            for i, _ in enumerate(scan_data):
-                signal_files.append((scan_key, str(i)))
-    
-    try:
-        signal_files.sort(key=lambda x: int(round(float(x[0].split('_')[0]))) 
-                        if '_' in x[0] and x[0].split('_')[0].replace('.', '', 1).isdigit() else 0)
-        print(f"Signals sorted by scan index")
-    except Exception as e:
-        print(f"Warning: Could not sort by scan index: {e}")
-        print("Using original order")
-    
-    # Process each signal in sorted order
-    for scan_key, signal_key in signal_files:
-        try:
-            # Get signal data
-            if isinstance(beam_data[scan_key], dict):
-                signal_data = beam_data[scan_key].get(signal_key)
-            elif isinstance(beam_data[scan_key], list):
-                idx = int(signal_key)
-                if idx < len(beam_data[scan_key]):
-                    signal_data = beam_data[scan_key][idx]
-                else:
-                    continue
-            else:
-                continue
-            
-            if isinstance(signal_data, list):
-                signal = np.array(signal_data, dtype=np.float32)
-            elif isinstance(signal_data, dict) and 'signal' in signal_data:
-                signal = np.array(signal_data['signal'], dtype=np.float32)
-            else:
-                signal = np.array(signal_data, dtype=np.float32)
-            
-            if signal is None or signal.size == 0:
-                continue
-            
-            all_signals.append(signal)
-            all_signal_keys.append(f"{scan_key}_{signal_key}")
-            
-            if '_' in signal_key:
-                defect_name = signal_key.split('_')[1]
-                if defect_name == 'Health':
-                    all_labels.append(0.0)
-                    all_defect_positions.append([0.0, 0.0])
-                else:
-                    try:
-                        defect_range = signal_key.split('_')[2].split('-')
-                        defect_start, defect_end = float(defect_range[0]), float(defect_range[1])
-                        all_labels.append(1.0)
-                        all_defect_positions.append([defect_start, defect_end])
-                    except:
-                        all_labels.append(1.0)
-                        all_defect_positions.append([0.0, 0.0])
-            else:
-                if isinstance(signal_data, dict):
-                    label = signal_data.get('label', 0.0)
-                    defect_start = signal_data.get('defect_start', 0.0)
-                    defect_end = signal_data.get('defect_end', 0.0)
-                    all_labels.append(float(label))
-                    all_defect_positions.append([float(defect_start), float(defect_end)])
-                else:
-                    all_labels.append(0.0)
-                    all_defect_positions.append([0.0, 0.0])
-        except Exception as e:
-            print(f"Error processing signal {scan_key}_{signal_key}: {e}")
-            continue
-    
-    print(f"Extracted {len(all_signals)} signals from beam {beam_key}")
-    return beam_key, all_signals, all_labels, all_defect_positions, all_signal_keys
-
-def create_sequences(signals, labels, defect_positions, signal_keys, seq_length):
-    """Create sequences from the signals"""
-    sequences = []
-    num_signals = len(signals)
-    
-    signal_length = len(signals[0])
-    valid_signals = []
-    valid_labels = []
-    valid_defect_positions = []
-    valid_keys = []
-    
-    for i, signal in enumerate(signals):
-        if len(signal) == signal_length:
-            valid_signals.append(signal)
-            valid_labels.append(labels[i])
-            valid_defect_positions.append(defect_positions[i])
-            valid_keys.append(signal_keys[i])
-    
-    signals = valid_signals
-    labels = valid_labels
-    defect_positions = valid_defect_positions
-    signal_keys = valid_keys
-    
-    num_signals = len(signals)
-    print(f"Using {num_signals} valid signals with length {signal_length}")
-    
-    for start_idx in range(0, num_signals, seq_length):
-        end_idx = min(start_idx + seq_length, num_signals)
-        seq_signals = signals[start_idx:end_idx]
-        seq_labels = labels[start_idx:end_idx]
-        seq_defect_positions = defect_positions[start_idx:end_idx]
-        seq_keys = signal_keys[start_idx:end_idx]
-        
-        if len(seq_signals) < 2:
-            continue
-        
-        if len(seq_signals) < seq_length:
-            pad_length = seq_length - len(seq_signals)
-            seq_signals.extend([np.zeros(signal_length, dtype=np.float32) for _ in range(pad_length)])
-            seq_labels.extend([0.0 for _ in range(pad_length)])
-            seq_defect_positions.extend([[0.0, 0.0] for _ in range(pad_length)])
-            seq_keys.extend([f"padding_{i}" for i in range(pad_length)])
-        
-        sequences.append({
-            'signals': seq_signals,
-            'labels': seq_labels,
-            'defect_positions': seq_defect_positions,
-            'keys': seq_keys,
-            'start_idx': start_idx,
-            'end_idx': end_idx
-        })
-    
-    print(f"Created {len(sequences)} sequences")
-    return sequences
-
-def run_predictions(model, device, sequences):
-    """Run predictions on the sequences"""
+    # Prepare results for printing
     results = []
+    for i in range(len(sequence)):
+        if i < len(defect_prob[0]):  # Make sure we don't go out of bounds
+            gt_label = labels[i]
+            gt_defect = defects[i]
+            
+            pred_prob = defect_prob[0][i].item()
+            pred_label = 1 if pred_prob > 0.5 else 0
+            pred_start = defect_start[0][i].item()
+            pred_end = defect_end[0][i].item()
+            
+            # Format defect positions for display
+            if gt_defect[0] is None:
+                gt_defect_str = "None"
+            else:
+                gt_defect_str = f"{gt_defect[0]:.2f}-{gt_defect[1]:.2f}"
+            
+            pred_defect_str = f"{pred_start:.2f}-{pred_end:.2f}" if pred_label == 1 else "None"
+            
+            # Check if prediction matches ground truth
+            label_match = "✓" if pred_label == gt_label else "✗"
+            
+            results.append([
+                i,  # Signal index
+                gt_label,  # Ground truth label
+                gt_defect_str,  # Ground truth defect position
+                f"{pred_prob:.4f}",  # Prediction probability
+                pred_label,  # Predicted label
+                pred_defect_str,  # Predicted defect position
+                label_match  # Match indicator
+            ])
     
-    for i, seq in enumerate(sequences):
-        print(f"Processing sequence {i+1}/{len(sequences)}")
-        
-        signals_tensor = torch.tensor(seq['signals'], dtype=torch.float32).unsqueeze(0).to(device)
-        
-        with torch.no_grad():
-            defect_prob, defect_start, defect_end = model(signals_tensor)
-        
-        seq_results = []
-        for j in range(min(len(seq['keys']), len(defect_prob[0]))):
-            if "padding_" not in seq['keys'][j]:
-                seq_results.append({
-                    'key': seq['keys'][j],
-                    'gt_label': seq['labels'][j],
-                    'gt_position': seq['defect_positions'][j],
-                    'pred_prob': defect_prob[0][j].item(),
-                    'pred_start': defect_start[0][j].item(),
-                    'pred_end': defect_end[0][j].item(),
-                    'signal': seq['signals'][j],
-                    'position_in_sequence': j
-                })
-        
-        results.append({
-            'sequence_idx': i,
-            'start_idx': seq['start_idx'],
-            'end_idx': seq['end_idx'],
-            'signals': seq_results
-        })
+    # Print results in a table
+    headers = ["Signal", "GT Label", "GT Defect", "Pred Prob", "Pred Label", "Pred Defect", "Match"]
+    print(tabulate(results, headers=headers, tablefmt="grid"))
     
-    return results
+    # Calculate accuracy metrics
+    correct_labels = sum(1 for r in results if r[1] == r[4])
+    accuracy = correct_labels / len(results) if results else 0
+    
+    true_positives = sum(1 for r in results if r[1] == 1 and r[4] == 1)
+    false_positives = sum(1 for r in results if r[1] == 0 and r[4] == 1)
+    false_negatives = sum(1 for r in results if r[1] == 1 and r[4] == 0)
+    
+    precision = true_positives / (true_positives + false_positives) if (true_positives + false_positives) > 0 else 0
+    recall = true_positives / (true_positives + false_negatives) if (true_positives + false_negatives) > 0 else 0
+    f1 = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0
+    
+    print(f"\nAccuracy: {accuracy:.4f}")
+    print(f"Precision: {precision:.4f}")
+    print(f"Recall: {recall:.4f}")
+    print(f"F1 Score: {f1:.4f}")
+    
+    return {
+        'sequence': sequence,
+        'labels': labels,
+        'defects': defects,
+        'pred_probs': [r[3] for r in results],
+        'pred_labels': [r[4] for r in results],
+        'pred_defects': [r[5] for r in results],
+        'accuracy': accuracy,
+        'precision': precision,
+        'recall': recall,
+        'f1': f1
+    }
 
-def visualize_sequence(sequence_result, save_path=None):
-    """Visualize a sequence with ground truth and predictions"""
-    signals = [r['signal'] for r in sequence_result['signals']]
-    labels = [r['gt_label'] for r in sequence_result['signals']]
-    gt_positions = [r['gt_position'] for r in sequence_result['signals']]
-    pred_probs = [r['pred_prob'] for r in sequence_result['signals']]
-    pred_positions = [[r['pred_start'], r['pred_end']] for r in sequence_result['signals']]
-    keys = [r['key'] for r in sequence_result['signals']]
+def visualize_sequence_results(results, beam_idx, seq_idx, save_path=None):
+    """Visualize sequence results with ground truth and predictions"""
+    sequence = results['sequence']
+    labels = results['labels']
+    defects = results['defects']
+    pred_probs = [float(p) for p in results['pred_probs']]
     
     plt.figure(figsize=(15, 10))
     
+    # Plot sequence heatmap
     plt.subplot(2, 1, 1)
-    signals_array = np.array(signals)
+    signals_array = np.array(sequence)
     im = plt.imshow(signals_array, aspect='auto', cmap='viridis')
     plt.colorbar(im, label='Signal Value')
     
     # Mark ground truth defects
-    for i, (label, position) in enumerate(zip(labels, gt_positions)):
+    for i, (label, defect) in enumerate(zip(labels, defects)):
         if label > 0.5:  # If it's a defect
-            start, end = position
-            start_idx = int(start * signals_array.shape[1])
-            end_idx = int(end * signals_array.shape[1])
-            rect = Rectangle((start_idx, i - 0.5), end_idx - start_idx, 1, 
-                            fill=False, edgecolor='red', linewidth=2)
-            plt.gca().add_patch(rect)
+            start, end = defect
+            if start is not None and end is not None:
+                start_idx = int(start * signals_array.shape[1])
+                end_idx = int(end * signals_array.shape[1])
+                rect = Rectangle((start_idx, i - 0.5), end_idx - start_idx, 1, 
+                                fill=False, edgecolor='red', linewidth=2)
+                plt.gca().add_patch(rect)
     
     # Mark predictions
-    for i, (prob, position) in enumerate(zip(pred_probs, pred_positions)):
-        if prob > 0.5:  # If prediction confidence is high enough
-            start, end = position
-            start_idx = int(start * signals_array.shape[1])
-            end_idx = int(end * signals_array.shape[1])
-            rect = Rectangle((start_idx, i - 0.5), end_idx - start_idx, 1, 
-                            fill=False, edgecolor='blue', linewidth=2)
-            plt.gca().add_patch(rect)
-            plt.text(start_idx, i + 0.3, f"{prob:.2f}", color='blue', fontsize=8)
+    for i, prob in enumerate(pred_probs):
+        if float(prob) > 0.5:  # If prediction confidence is high enough
+            # Parse the defect position string
+            defect_str = results['pred_defects'][i]
+            if defect_str != "None":
+                try:
+                    start, end = map(float, defect_str.split('-'))
+                    start_idx = int(start * signals_array.shape[1])
+                    end_idx = int(end * signals_array.shape[1])
+                    rect = Rectangle((start_idx, i - 0.5), end_idx - start_idx, 1, 
+                                    fill=False, edgecolor='blue', linewidth=2)
+                    plt.gca().add_patch(rect)
+                    plt.text(start_idx, i + 0.3, f"{float(prob):.2f}", color='blue', fontsize=8)
+                except:
+                    pass
     
     plt.xlabel('Signal Position')
     plt.ylabel('Signal Index')
-    plt.title(f'Sequence {sequence_result["sequence_idx"]} Visualization')
+    plt.title(f'Beam {beam_idx}, Sequence {seq_idx} Visualization')
     
     from matplotlib.patches import Patch
     legend_elements = [
@@ -343,8 +245,9 @@ def visualize_sequence(sequence_result, save_path=None):
     ]
     plt.legend(handles=legend_elements, loc='upper right')
     
+    # Plot prediction probabilities
     plt.subplot(2, 1, 2)
-    plt.bar(range(len(pred_probs)), pred_probs, color='blue', alpha=0.7)
+    plt.bar(range(len(pred_probs)), [float(p) for p in pred_probs], color='blue', alpha=0.7)
     plt.axhline(y=0.5, color='r', linestyle='--', label='Threshold')
     plt.xlabel('Signal Index')
     plt.ylabel('Defect Probability')
@@ -360,27 +263,44 @@ def visualize_sequence(sequence_result, save_path=None):
         plt.show()
 
 def main():
+    # Load model
     model, device = load_model(MODEL_PATH)
     
-    beam_key, signals, labels, defect_positions, signal_keys = extract_beam_signals(JSON_FILE_PATH, BEAM_INDEX)
+    # Load sequences using your function
+    print(f"Loading sequences from {JSON_FILE_PATH}")
+    sequences_by_beams, labels_by_beams, defects_by_beams = load_sequences(JSON_FILE_PATH, SEQ_LENGTH)
     
-    sequences = create_sequences(signals, labels, defect_positions, signal_keys, SEQ_LENGTH)
+    # Check if the requested beam and sequence exist
+    beam_idx_str = str(BEAM_INDEX)
+    seq_idx_str = str(SEQUENCE_INDEX)
     
-    results = run_predictions(model, device, sequences)
+    if beam_idx_str not in sequences_by_beams:
+        available_beams = list(sequences_by_beams.keys())
+        print(f"Beam index {BEAM_INDEX} not found. Available beam indices: {available_beams}")
+        return
     
-    for i, result in enumerate(results):
-        save_path = f"beam_{BEAM_INDEX}_sequence_{i}.png"
-        visualize_sequence(result, save_path)
+    if seq_idx_str not in sequences_by_beams[beam_idx_str]:
+        available_seqs = list(sequences_by_beams[beam_idx_str].keys())
+        print(f"Sequence index {SEQUENCE_INDEX} not found for beam {BEAM_INDEX}. Available sequence indices: {available_seqs}")
+        return
     
-    print(f"Processed {len(results)} sequences from beam {beam_key}")
+    # Get the requested sequence, labels, and defects
+    sequence = sequences_by_beams[beam_idx_str][seq_idx_str]
+    labels = labels_by_beams[beam_idx_str][seq_idx_str]
+    defects = defects_by_beams[beam_idx_str][seq_idx_str]
     
-    total_signals = sum(len(r['signals']) for r in results)
-    total_gt_defects = sum(sum(1 for s in r['signals'] if s['gt_label'] > 0.5) for r in results)
-    total_pred_defects = sum(sum(1 for s in r['signals'] if s['pred_prob'] > 0.5) for r in results)
+    print(f"Selected Beam {BEAM_INDEX}, Sequence {SEQUENCE_INDEX}")
+    print(f"Sequence length: {len(sequence)}")
+    print(f"Number of defects in ground truth: {sum(1 for l in labels if l > 0)}")
     
-    print(f"Total signals: {total_signals}")
-    print(f"Ground truth defects: {total_gt_defects}")
-    print(f"Predicted defects: {total_pred_defects}")
+    # Run predictions and print detailed results
+    results = run_predictions_for_sequence(model, device, sequence, labels, defects, BEAM_INDEX, SEQUENCE_INDEX)
+    
+    # Visualize the results
+    save_path = f"beam_{BEAM_INDEX}_sequence_{SEQUENCE_INDEX}.png"
+    visualize_sequence_results(results, BEAM_INDEX, SEQUENCE_INDEX, save_path)
+    
+    print(f"Results saved to {save_path}")
 
 if __name__ == "__main__":
     main()
