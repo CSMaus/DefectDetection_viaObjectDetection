@@ -33,86 +33,96 @@ class PredictionWorker(QThread):
         for beam_idx, (beam_key, beam_data) in enumerate(self.json_data.items()):
             self.progress.emit(beam_idx, total_beams)
             
-            # Extract all signals for this beam
+            # Extract all signals for this beam - using the same approach as json_dataset.py
             all_signals = []
             all_labels = []
             all_defect_positions = []
             all_signal_keys = []
             
-            # Process beam data which can be either dict or list
-            for scan_key, scan_data in beam_data.items():
-                # Check if scan_data is a dictionary or a list
+            # Sort signal files by scan index (exactly as in json_dataset.py)
+            signal_files = []
+            for scan_key in beam_data.keys():
+                scan_data = beam_data[scan_key]
                 if isinstance(scan_data, dict):
-                    # Dictionary structure
-                    signal_keys = sorted(scan_data.keys(), 
-                                        key=lambda x: int(round(float(x.split('_')[0]))))
-                    
-                    for signal_key in signal_keys:
-                        signal_data = scan_data[signal_key]
-                        
-                        # Extract signal data
-                        if isinstance(signal_data, list):
-                            signal = np.array(signal_data, dtype=np.float32)
-                        elif isinstance(signal_data, dict) and 'signal' in signal_data:
-                            signal = np.array(signal_data['signal'], dtype=np.float32)
+                    for signal_key in scan_data.keys():
+                        signal_files.append((scan_key, signal_key))
+                elif isinstance(scan_data, list):
+                    for i, _ in enumerate(scan_data):
+                        signal_files.append((scan_key, str(i)))
+            
+            # Sort by scan index if possible (exactly as in json_dataset.py)
+            try:
+                signal_files.sort(key=lambda x: int(round(float(x[1].split('_')[0]))) 
+                                if '_' in x[1] and x[1].split('_')[0].replace('.', '', 1).isdigit() else 0)
+            except:
+                # If sorting fails, keep original order
+                pass
+            
+            # Process each signal in sorted order
+            for scan_key, signal_key in signal_files:
+                # Get signal data
+                try:
+                    if isinstance(beam_data[scan_key], dict):
+                        signal_data = beam_data[scan_key].get(signal_key)
+                    elif isinstance(beam_data[scan_key], list):
+                        idx = int(signal_key)
+                        if idx < len(beam_data[scan_key]):
+                            signal_data = beam_data[scan_key][idx]
                         else:
-                            try:
-                                signal = np.array(signal_data, dtype=np.float32)
-                            except:
-                                continue
-                        
-                        all_signals.append(signal)
-                        all_signal_keys.append(f"{scan_key}_{signal_key}")
-                        
-                        # Process label and defect position
-                        parts = signal_key.split('_')
-                        if len(parts) >= 2 and parts[1] == 'Health':
+                            continue
+                    else:
+                        continue
+                    
+                    # Extract signal data (exactly as in json_dataset.py)
+                    if isinstance(signal_data, list):
+                        signal = np.array(signal_data, dtype=np.float32)
+                    elif isinstance(signal_data, dict) and 'signal' in signal_data:
+                        signal = np.array(signal_data['signal'], dtype=np.float32)
+                    else:
+                        signal = np.array(signal_data, dtype=np.float32)
+                    
+                    # Skip invalid signals
+                    if signal is None or signal.size == 0:
+                        continue
+                    
+                    all_signals.append(signal)
+                    all_signal_keys.append(f"{scan_key}_{signal_key}")
+                    
+                    # Process label and defect position (exactly as in json_dataset.py)
+                    if '_' in signal_key:
+                        defect_name = signal_key.split('_')[1]
+                        if defect_name == 'Health':
                             all_labels.append(0.0)
                             all_defect_positions.append([0.0, 0.0])
                         else:
                             try:
-                                defect_range = parts[2].split('-')
+                                defect_range = signal_key.split('_')[2].split('-')
                                 defect_start, defect_end = float(defect_range[0]), float(defect_range[1])
                                 all_labels.append(1.0)
                                 all_defect_positions.append([defect_start, defect_end])
                             except:
                                 all_labels.append(1.0)
                                 all_defect_positions.append([0.0, 0.0])
-                
-                elif isinstance(scan_data, list):
-                    # List structure
-                    for i, signal_item in enumerate(scan_data):
-                        # Extract signal data
-                        if isinstance(signal_item, dict) and 'signal' in signal_item:
-                            signal = np.array(signal_item['signal'], dtype=np.float32)
-                            signal_key = str(i)
-                            
-                            # Try to get label information
-                            label = signal_item.get('label', 0.0)
-                            defect_start = signal_item.get('defect_start', 0.0)
-                            defect_end = signal_item.get('defect_end', 0.0)
-                            
-                            all_signals.append(signal)
-                            all_signal_keys.append(f"{scan_key}_{signal_key}")
+                    else:
+                        # For list-based data, try to get label from dict or default to 0
+                        if isinstance(signal_data, dict):
+                            label = signal_data.get('label', 0.0)
+                            defect_start = signal_data.get('defect_start', 0.0)
+                            defect_end = signal_data.get('defect_end', 0.0)
                             all_labels.append(float(label))
                             all_defect_positions.append([float(defect_start), float(defect_end)])
-                        elif isinstance(signal_item, list):
-                            try:
-                                signal = np.array(signal_item, dtype=np.float32)
-                                signal_key = str(i)
-                                
-                                all_signals.append(signal)
-                                all_signal_keys.append(f"{scan_key}_{signal_key}")
-                                all_labels.append(0.0)  # Default to no defect
-                                all_defect_positions.append([0.0, 0.0])
-                            except:
-                                continue
+                        else:
+                            all_labels.append(0.0)
+                            all_defect_positions.append([0.0, 0.0])
+                except Exception as e:
+                    # Skip any signals that cause errors
+                    continue
             
             # Skip if no signals found
-            if not all_signals:
+            if len(all_signals) < 2:
                 continue
             
-            # Create sequences from all signals
+            # Create sequences from all signals (similar to json_dataset.py)
             beam_results = {}
             num_signals = len(all_signals)
             
@@ -128,10 +138,33 @@ class PredictionWorker(QThread):
                 if len(seq_signals) < 2:
                     continue
                 
-                # Pad if needed
+                # Make sure all signals have the same length
+                signal_length = len(seq_signals[0])
+                valid_signals = []
+                valid_keys = []
+                valid_labels = []
+                valid_defect_positions = []
+                
+                for i, signal in enumerate(seq_signals):
+                    if len(signal) == signal_length:
+                        valid_signals.append(signal)
+                        valid_keys.append(seq_keys[i])
+                        valid_labels.append(seq_labels[i])
+                        valid_defect_positions.append(seq_defect_positions[i])
+                
+                # Skip if not enough valid signals
+                if len(valid_signals) < 2:
+                    continue
+                
+                # Use validated signals
+                seq_signals = valid_signals
+                seq_keys = valid_keys
+                seq_labels = valid_labels
+                seq_defect_positions = valid_defect_positions
+                
+                # Pad if needed (exactly as in json_dataset.py)
                 if len(seq_signals) < self.seq_length:
                     pad_length = self.seq_length - len(seq_signals)
-                    signal_length = len(seq_signals[0])
                     seq_signals.extend([np.zeros(signal_length, dtype=np.float32) for _ in range(pad_length)])
                     seq_labels.extend([0.0 for _ in range(pad_length)])
                     seq_defect_positions.extend([[0.0, 0.0] for _ in range(pad_length)])
@@ -139,24 +172,28 @@ class PredictionWorker(QThread):
                     seq_keys.extend([f"padding_{i}" for i in range(pad_length)])
                 
                 # Convert to tensor and run prediction
-                signals_tensor = torch.tensor(seq_signals, dtype=torch.float32).unsqueeze(0).to(self.device)
-                
-                with torch.no_grad():
-                    defect_prob, defect_start, defect_end = self.model(signals_tensor)
-                
-                # Store results for each signal in the sequence
-                for i, key in enumerate(seq_keys):
-                    if i < len(defect_prob[0]) and "padding_" not in key:
-                        beam_results[key] = {
-                            'gt_label': seq_labels[i],
-                            'gt_position': seq_defect_positions[i],
-                            'pred_prob': defect_prob[0][i].item(),
-                            'pred_start': defect_start[0][i].item(),
-                            'pred_end': defect_end[0][i].item(),
-                            'signal': seq_signals[i].tolist(),
-                            'sequence_idx': start_idx // self.seq_length,
-                            'position_in_sequence': i
-                        }
+                try:
+                    signals_tensor = torch.tensor(seq_signals, dtype=torch.float32).unsqueeze(0).to(self.device)
+                    
+                    with torch.no_grad():
+                        defect_prob, defect_start, defect_end = self.model(signals_tensor)
+                    
+                    # Store results for each signal in the sequence
+                    for i, key in enumerate(seq_keys):
+                        if i < len(defect_prob[0]) and "padding_" not in key:
+                            beam_results[key] = {
+                                'gt_label': seq_labels[i],
+                                'gt_position': seq_defect_positions[i],
+                                'pred_prob': defect_prob[0][i].item(),
+                                'pred_start': defect_start[0][i].item(),
+                                'pred_end': defect_end[0][i].item(),
+                                'signal': seq_signals[i].tolist(),
+                                'sequence_idx': start_idx // self.seq_length,
+                                'position_in_sequence': i
+                            }
+                except Exception as e:
+                    print(f"Error processing sequence: {e}")
+                    continue
             
             # Store results for this beam
             if beam_results:

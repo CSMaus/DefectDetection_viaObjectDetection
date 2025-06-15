@@ -30,10 +30,8 @@ def train_model(model, train_loader, val_loader, optimizer, scheduler, num_epoch
     Returns:
         dict: Training history
     """
-    # Create save directory if it doesn't exist
     os.makedirs(save_dir, exist_ok=True)
     
-    # Initialize history
     history = {
         'epochs': [],
         'train_loss': [],
@@ -47,7 +45,6 @@ def train_model(model, train_loader, val_loader, optimizer, scheduler, num_epoch
         'learning_rate': []
     }
     
-    # Loss functions
     cls_criterion = nn.BCELoss()
     
     # Early stopping parameters
@@ -55,9 +52,7 @@ def train_model(model, train_loader, val_loader, optimizer, scheduler, num_epoch
     patience = 5
     patience_counter = 0
     
-    # Training loop
     for epoch in range(num_epochs):
-        # Training phase
         model.train()
         train_loss = 0.0
         train_cls_loss = 0.0
@@ -71,13 +66,10 @@ def train_model(model, train_loader, val_loader, optimizer, scheduler, num_epoch
             labels = labels.to(device)
             defect_positions = defect_positions.to(device)
             
-            # Forward pass
             defect_prob, defect_start, defect_end = model(signals)
             
-            # Calculate losses
             cls_loss = cls_criterion(defect_prob, labels)
             
-            # Position loss only for defective signals
             pos_mask = (labels > 0.5).float()
             if pos_mask.sum() > 0:
                 start_loss = F.mse_loss(defect_start * pos_mask, defect_positions[:, :, 0] * pos_mask, reduction='sum') / (pos_mask.sum() + 1e-8)
@@ -86,29 +78,24 @@ def train_model(model, train_loader, val_loader, optimizer, scheduler, num_epoch
             else:
                 pos_loss = torch.tensor(0.0, device=device)
             
-            # Combined loss
             loss = cls_loss + 0.5 * pos_loss
             
-            # Backward pass and optimization
             optimizer.zero_grad()
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)  # Gradient clipping
             optimizer.step()
             
-            # Update metrics
             train_loss += loss.item()
             train_cls_loss += cls_loss.item()
             train_pos_loss += pos_loss.item()
             train_correct += ((defect_prob > 0.5) == (labels > 0.5)).sum().item()
             train_total += labels.numel()
         
-        # Calculate average training metrics
         train_loss /= len(train_loader)
         train_cls_loss /= len(train_loader)
         train_pos_loss /= len(train_loader)
         train_accuracy = train_correct / train_total
         
-        # Validation phase
         model.eval()
         val_loss = 0.0
         val_cls_loss = 0.0
@@ -265,7 +252,7 @@ def main():
     learning_rate = 0.001
     weight_decay = 0.01
     
-    json_dir = "json_data/"  # Update with actual path
+    json_dir = "json_data/"
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     save_dir = f"models/improved_model_{timestamp}"
     
