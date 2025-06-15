@@ -571,12 +571,10 @@ class ModelTesterApp(QMainWindow):
         signals_array = signals_array.T
         
         # Display as an image with origin='lower' to flip the Y-axis (0 at bottom)
-        im = ax.imshow(signals_array, aspect='auto', cmap='viridis', origin='lower')
+        im = ax.imshow(signals_array, aspect='auto', cmap='viridis')  # , origin='lower')
         
-        # Add colorbar
         self.sequence_figure.colorbar(im, ax=ax, label='Signal Value')
         
-        # Mark ground truth defects
         for i, (label, position) in enumerate(zip(labels, gt_positions)):
             if label > 0.5:  # If it's a defect
                 start, end = position
