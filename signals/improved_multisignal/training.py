@@ -259,8 +259,14 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
     
-    train_loader = get_dataloader(json_dir, batch_size=batch_size, seq_length=50, shuffle=True)
-    val_loader = get_dataloader(json_dir, batch_size=batch_size, seq_length=50, shuffle=False)
+    # Get train and validation loaders with proper split
+    train_loader, val_loader = get_dataloader(
+        json_dir, 
+        batch_size=batch_size, 
+        seq_length=50, 
+        shuffle=True,
+        validation_split=0.2  # 80% training, 20% validation
+    )
     
     model = ImprovedMultiSignalClassifier(
         signal_length=signal_length,

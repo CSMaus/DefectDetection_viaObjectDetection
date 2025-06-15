@@ -10,11 +10,11 @@ from tabulate import tabulate
 
 from improved_model import ImprovedMultiSignalClassifier
 
-# Configuration - MODIFY THESE VALUES
-JSON_FILE_PATH = 'json_data/WOT-D456_A4_003_Ch-0_D0.5-10.json'
-BEAM_INDEX = 29  # Beam index to analyze
-SEQUENCE_INDEX = 0  # Sequence index to analyze
-MODEL_PATH = 'models/improved_model_20250615_033905/best_model.pth'
+# JSON_FILE_PATH = 'json_data/WOT-D456_A4_003_Ch-0_D0.5-10.json'
+JSON_FILE_PATH = 'json_data/WOT-D456_A4_001_Ch-0_D0.5-21.json'
+BEAM_INDEX = 28
+SEQUENCE_INDEX = 0
+MODEL_PATH = 'models/improved_model_20250615_193609/best_model.pth'
 SEQ_LENGTH = 50
 
 def load_model(model_path):
@@ -120,14 +120,12 @@ def run_predictions_for_sequence(model, device, sequence, labels, defects, beam_
     # Convert sequence to tensor
     sequence_tensor = torch.tensor(sequence, dtype=torch.float32).unsqueeze(0).to(device)
     
-    # Run prediction
     with torch.no_grad():
         defect_prob, defect_start, defect_end = model(sequence_tensor)
     
-    # Prepare results for printing
     results = []
     for i in range(len(sequence)):
-        if i < len(defect_prob[0]):  # Make sure we don't go out of bounds
+        if i < len(defect_prob[0]):
             gt_label = labels[i]
             gt_defect = defects[i]
             

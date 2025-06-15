@@ -2,15 +2,14 @@ import torch
 import numpy as np
 import json
 import os
-from torch.utils.data import Dataset, DataLoader
+import math
+from torch.utils.data import Dataset, DataLoader, random_split
 
 
 class JsonSignalDataset(Dataset):
     """
     Dataset class for loading signal data from JSON files.
-    Maintains the same structure as the original SignalDataset in training_01.py.
-    Only includes sequences with defects.
-    Creates multiple sequences from beams with more than seq_length signals.
+    Uses the exact same sequence formation logic as in beam_sequence_predictor.py's load_sequences function.
     """
     def __init__(self, json_dir, seq_length=50):
         self.json_dir = json_dir
@@ -20,21 +19,20 @@ class JsonSignalDataset(Dataset):
         self.labels = []
         self.defect_positions = []
         
-        # Load all JSON files and extract sequences with defects
+        # Load all JSON files and extract sequences
         self._load_all_json_files()
         
-        print(f"Loaded {len(self.signal_sets)} sequences with defects from {len(self.json_files)} JSON files")
+        print(f"Loaded {len(self.signal_sets)} sequences from {len(self.json_files)} JSON files")
         print(f"Each sequence contains {self.seq_length} signals")
     
     def _load_all_json_files(self):
         """Load ALL JSON files and combine their sequences into a single dataset"""
         total_beams = 0
-        beams_with_defects = 0
         total_sequences = 0
         
         print(f"Found {len(self.json_files)} JSON files in {self.json_dir}")
         
-        # Process each JSON file (equivalent to a folder in the original implementation)
+        # Process each JSON file
         for json_file in self.json_files:
             file_path = os.path.join(self.json_dir, json_file)
             
@@ -42,132 +40,124 @@ class JsonSignalDataset(Dataset):
                 with open(file_path, 'r') as f:
                     data = json.load(f)
                 
-                # Process each beam (equivalent to a beam folder in the original implementation)
-                for beam_key, beam_data in data.items():
+                # Process each beam - EXACTLY as in load_sequences function
+                for beam_key in data.keys():
+                    beam_data = data[beam_key]
                     total_beams += 1
                     
-                    # Check if this beam has any defects
-                    has_defects = False
-                    for signal_key in beam_data.keys():
-                        if '_' in signal_key and signal_key.split('_')[1] != 'Health':
-                            has_defects = True
-                            break
+                    # Sort scan keys by index - EXACTLY as in load_sequences function
+                    scans_keys_sorted = sorted(beam_data.keys(), key=lambda x: int(x.split('_')[0]))
                     
-                    # Skip beams without defects
-                    if not has_defects:
+                    # Skip if not enough scans for a full sequence
+                    if len(scans_keys_sorted) < self.seq_length:
                         continue
                     
-                    beams_with_defects += 1
+                    # Extract all signals, labels, and defect positions for this beam - EXACTLY as in load_sequences function
+                    all_scans_for_beam = {}
+                    all_lbls_for_beam = {}
+                    all_defects_for_beam = {}
                     
-                    # Sort signal files by scan index (equivalent to sorting txt files in the original implementation)
-                    signal_files = sorted(list(beam_data.keys()), 
-                                         key=lambda x: int(round(float(x.split('_')[0]))) if '_' in x and x.split('_')[0].replace('.', '', 1).isdigit() else 0)
-                    
-                    if not signal_files:
-                        continue
-                    
-                    # Extract all signals for this beam
-                    all_signals = []
-                    all_labels = []
-                    all_defect_positions = []
-                    
-                    for filename in signal_files:
-                        # Extract signal data (equivalent to loading from txt file)
-                        signal_data = beam_data[filename]
+                    # Use sequential scan index - EXACTLY as in load_sequences function
+                    scan_idx = 0
+                    for scan_key in scans_keys_sorted:
+                        scan_data = beam_data[scan_key]
                         
-                        # Handle different signal data formats
-                        if isinstance(signal_data, list):
-                            signal = np.array(signal_data, dtype=np.float32)
-                        elif isinstance(signal_data, dict) and 'signal' in signal_data:
-                            signal = np.array(signal_data['signal'], dtype=np.float32)
+                        # Store scan data with sequential index
+                        all_scans_for_beam[str(scan_idx)] = scan_data
+                        
+                        # Extract label and defect position - EXACTLY as in load_sequences function
+                        if scan_key.split('_')[1] == "Health":
+                            all_lbls_for_beam[str(scan_idx)] = 0
+                            all_defects_for_beam[str(scan_idx)] = [None, None]
                         else:
+                            all_lbls_for_beam[str(scan_idx)] = 1
                             try:
-                                signal = np.array(signal_data, dtype=np.float32)
+                                defect_range = scan_key.split('_')[2].split('-')
+                                defect_start, defect_end = float(defect_range[0]), float(defect_range[1])
+                                all_defects_for_beam[str(scan_idx)] = [defect_start, defect_end]
                             except:
-                                print(f"Could not extract signal from {filename} in {json_file}, beam {beam_key}")
+                                all_defects_for_beam[str(scan_idx)] = [0.0, 0.0]
+                        
+                        scan_idx += 1
+                    
+                    # Create sequences from this beam - EXACTLY as in load_sequences function
+                    num_of_seqs_for_beam = math.ceil(len(scans_keys_sorted) / self.seq_length)
+                    
+                    for i in range(num_of_seqs_for_beam):
+                        # Create a new sequence
+                        sequence = []
+                        labels = []
+                        defects = []
+                        
+                        # Determine start and end indices for this sequence - EXACTLY as in load_sequences function
+                        if i < num_of_seqs_for_beam - 1:
+                            start_idx = i * self.seq_length
+                            end_idx = start_idx + self.seq_length
+                        else:
+                            # For the last sequence, ensure we have a full sequence length
+                            start_idx = len(scans_keys_sorted) - self.seq_length
+                            end_idx = len(scans_keys_sorted)
+                        
+                        # Skip if start_idx is negative (can happen if there are fewer scans than seq_length)
+                        if start_idx < 0:
+                            continue
+                        
+                        # Extract signals, labels, and defect positions for this sequence - EXACTLY as in load_sequences function
+                        for j in range(start_idx, end_idx):
+                            try:
+                                scan_data = all_scans_for_beam[str(j)]
+                                
+                                # Convert scan data to numpy array
+                                if isinstance(scan_data, list):
+                                    signal = np.array(scan_data, dtype=np.float32)
+                                elif isinstance(scan_data, dict) and 'signal' in scan_data:
+                                    signal = np.array(scan_data['signal'], dtype=np.float32)
+                                else:
+                                    signal = np.array(scan_data, dtype=np.float32)
+                                
+                                # Add to sequence
+                                sequence.append(signal)
+                                labels.append(all_lbls_for_beam[str(j)])
+                                defects.append(all_defects_for_beam[str(j)])
+                            except Exception as e:
+                                print(f"Error processing scan {j} in beam {beam_key}: {e}")
+                                # Skip this scan
                                 continue
                         
-                        all_signals.append(signal)
+                        # Skip if sequence doesn't have exactly seq_length signals
+                        if len(sequence) != self.seq_length:
+                            continue
                         
-                        # Process label and defect position (exactly as in the original implementation)
-                        defect_name = filename.split('_')[1]
-                        if defect_name == 'Health':
-                            all_labels.append(0.0)
-                            all_defect_positions.append([0.0, 0.0])
-                        else:
-                            try:
-                                defect_range = filename.split('_')[2].split('-')
-                                defect_start, defect_end = float(defect_range[0]), float(defect_range[1])
-                                all_labels.append(1.0)
-                                all_defect_positions.append([defect_start, defect_end])
-                            except Exception as e:
-                                print(f"Error processing defect position for {filename}: {e}")
-                                all_labels.append(1.0)
-                                all_defect_positions.append([0.0, 0.0])
-                    
-                    # Skip if no valid signals were found
-                    if not all_signals:
-                        continue
-                    
-                    # Create sequences from this beam
-                    num_signals = len(all_signals)
-                    
-                    if num_signals <= self.seq_length:
-                        # If we have fewer signals than seq_length, pad with zeros
-                        signals = all_signals.copy()
-                        labels = all_labels.copy()
-                        defect_positions = all_defect_positions.copy()
+                        # Ensure all signals have the same length
+                        signal_length = len(sequence[0])
+                        valid = True
                         
-                        # Pad with zeros
-                        pad_length = self.seq_length - len(signals)
-                        signal_length = len(signals[0])
-                        signals.extend([np.zeros(signal_length, dtype=np.float32) for _ in range(pad_length)])
-                        labels.extend([0.0 for _ in range(pad_length)])
-                        defect_positions.extend([[0.0, 0.0] for _ in range(pad_length)])
+                        for signal in sequence:
+                            if len(signal) != signal_length:
+                                valid = False
+                                break
+                        
+                        if not valid:
+                            continue
+                        
+                        # Convert defects to proper format for training
+                        formatted_defects = []
+                        for defect in defects:
+                            if defect[0] is None:
+                                formatted_defects.append([0.0, 0.0])
+                            else:
+                                formatted_defects.append([float(defect[0]), float(defect[1])])
                         
                         # Add to dataset
-                        self.signal_sets.append(np.array(signals, dtype=np.float32))
+                        self.signal_sets.append(np.array(sequence, dtype=np.float32))
                         self.labels.append(np.array(labels, dtype=np.float32))
-                        self.defect_positions.append(np.array(defect_positions, dtype=np.float32))
+                        self.defect_positions.append(np.array(formatted_defects, dtype=np.float32))
                         total_sequences += 1
-                    else:
-                        # If we have more signals than seq_length, create multiple overlapping sequences
-                        # Calculate step size to ensure all signals are used with some overlap
-                        total_sequences_needed = max(1, int(np.ceil(num_signals / (self.seq_length / 2))))
-                        step_size = max(1, int(np.floor((num_signals - self.seq_length) / (total_sequences_needed - 1)))) if total_sequences_needed > 1 else self.seq_length
-                        
-                        # Create sequences with the calculated step size
-                        for start_idx in range(0, num_signals - self.seq_length + 1, step_size):
-                            end_idx = start_idx + self.seq_length
-                            
-                            # Extract sequence
-                            signals = all_signals[start_idx:end_idx]
-                            labels = all_labels[start_idx:end_idx]
-                            defect_positions = all_defect_positions[start_idx:end_idx]
-                            
-                            # Add to dataset
-                            self.signal_sets.append(np.array(signals, dtype=np.float32))
-                            self.labels.append(np.array(labels, dtype=np.float32))
-                            self.defect_positions.append(np.array(defect_positions, dtype=np.float32))
-                            total_sequences += 1
-                        
-                        # Add the last sequence if needed
-                        if (num_signals - self.seq_length) % step_size != 0:
-                            # Extract the last sequence
-                            signals = all_signals[-self.seq_length:]
-                            labels = all_labels[-self.seq_length:]
-                            defect_positions = all_defect_positions[-self.seq_length:]
-                            
-                            # Add to dataset
-                            self.signal_sets.append(np.array(signals, dtype=np.float32))
-                            self.labels.append(np.array(labels, dtype=np.float32))
-                            self.defect_positions.append(np.array(defect_positions, dtype=np.float32))
-                            total_sequences += 1
             
             except Exception as e:
                 print(f"Error loading {json_file}: {e}")
         
-        print(f"Total beams: {total_beams}, Beams with defects: {beams_with_defects}, Total sequences: {total_sequences}")
+        print(f"Total beams: {total_beams}, Total sequences: {total_sequences}")
     
     def __len__(self):
         return len(self.signal_sets)
@@ -179,9 +169,9 @@ class JsonSignalDataset(Dataset):
         return signals, labels, defect_positions
 
 
-def get_dataloader(json_dir, batch_size=4, seq_length=50, shuffle=True, num_workers=4):
+def get_dataloader(json_dir, batch_size=4, seq_length=50, shuffle=True, num_workers=4, validation_split=0.2):
     """
-    Create a DataLoader for the JsonSignalDataset
+    Create DataLoaders for training and validation with proper split
     
     Args:
         json_dir: Directory containing JSON files
@@ -189,15 +179,43 @@ def get_dataloader(json_dir, batch_size=4, seq_length=50, shuffle=True, num_work
         seq_length: Number of signals per sequence
         shuffle: Whether to shuffle the dataset
         num_workers: Number of worker processes for data loading
+        validation_split: Fraction of data to use for validation (0.0 to 1.0)
         
     Returns:
-        DataLoader object
+        train_loader, val_loader: DataLoader objects for training and validation
     """
-    dataset = JsonSignalDataset(json_dir, seq_length)
-    return DataLoader(
-        dataset,
+    # Create the full dataset
+    full_dataset = JsonSignalDataset(json_dir, seq_length)
+    
+    # Calculate sizes for train and validation sets
+    dataset_size = len(full_dataset)
+    val_size = int(dataset_size * validation_split)
+    train_size = dataset_size - val_size
+    
+    # Split the dataset
+    train_dataset, val_dataset = random_split(
+        full_dataset, 
+        [train_size, val_size],
+        generator=torch.Generator().manual_seed(42)  # For reproducibility
+    )
+    
+    print(f"Dataset split: {train_size} training samples, {val_size} validation samples")
+    
+    # Create data loaders
+    train_loader = DataLoader(
+        train_dataset,
         batch_size=batch_size,
         shuffle=shuffle,
         num_workers=num_workers,
         pin_memory=True
     )
+    
+    val_loader = DataLoader(
+        val_dataset,
+        batch_size=batch_size,
+        shuffle=False,  # No need to shuffle validation data
+        num_workers=num_workers,
+        pin_memory=True
+    )
+    
+    return train_loader, val_loader
