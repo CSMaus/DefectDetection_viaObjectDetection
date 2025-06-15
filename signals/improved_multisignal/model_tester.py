@@ -6,7 +6,7 @@ import numpy as np
 import math
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
                             QComboBox, QPushButton, QLabel, QFileDialog, QFrame, QGridLayout,
-                            QSpinBox, QSplitter, QTabWidget)
+                            QSpinBox, QSplitter, QTabWidget, QSlider)
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
@@ -257,19 +257,43 @@ class ModelTesterApp(QMainWindow):
         self.predict_status = QLabel("Ready")
         
         # Beam selection
+        beam_layout = QHBoxLayout()
         self.beam_label = QLabel("Beam:")
         self.beam_combo = QComboBox()
         self.beam_combo.currentIndexChanged.connect(self.update_scan_combo)
+        self.beam_slider = QSlider(Qt.Orientation.Horizontal)
+        self.beam_slider.setMinimum(0)
+        self.beam_slider.setMaximum(0)  # Will be updated when beams are loaded
+        self.beam_slider.valueChanged.connect(self.on_beam_slider_changed)
+        beam_layout.addWidget(self.beam_label)
+        beam_layout.addWidget(self.beam_combo, 1)
+        beam_layout.addWidget(self.beam_slider, 2)
         
         # Sequence selection
+        sequence_layout = QHBoxLayout()
         self.sequence_label = QLabel("Sequence:")
         self.sequence_combo = QComboBox()
         self.sequence_combo.currentIndexChanged.connect(self.update_sequence_visualization)
+        self.sequence_slider = QSlider(Qt.Orientation.Horizontal)
+        self.sequence_slider.setMinimum(0)
+        self.sequence_slider.setMaximum(0)  # Will be updated when sequences are loaded
+        self.sequence_slider.valueChanged.connect(self.on_sequence_slider_changed)
+        sequence_layout.addWidget(self.sequence_label)
+        sequence_layout.addWidget(self.sequence_combo, 1)
+        sequence_layout.addWidget(self.sequence_slider, 2)
         
         # Signal selection
+        signal_layout = QHBoxLayout()
         self.signal_label = QLabel("Signal:")
         self.signal_combo = QComboBox()
         self.signal_combo.currentIndexChanged.connect(self.update_signal_visualization)
+        self.signal_slider = QSlider(Qt.Orientation.Horizontal)
+        self.signal_slider.setMinimum(0)
+        self.signal_slider.setMaximum(0)  # Will be updated when signals are loaded
+        self.signal_slider.valueChanged.connect(self.on_signal_slider_changed)
+        signal_layout.addWidget(self.signal_label)
+        signal_layout.addWidget(self.signal_combo, 1)
+        signal_layout.addWidget(self.signal_slider, 2)
         
         # Add controls to layout
         controls_layout.addWidget(self.dir_label, 0, 0)
@@ -281,12 +305,19 @@ class ModelTesterApp(QMainWindow):
         controls_layout.addWidget(self.model_path_label, 1, 2, 1, 2)
         controls_layout.addWidget(self.predict_button, 2, 0)
         controls_layout.addWidget(self.predict_status, 2, 1, 1, 3)
-        controls_layout.addWidget(self.beam_label, 3, 0)
-        controls_layout.addWidget(self.beam_combo, 3, 1)
-        controls_layout.addWidget(self.sequence_label, 3, 2)
-        controls_layout.addWidget(self.sequence_combo, 3, 3)
-        controls_layout.addWidget(self.signal_label, 4, 0)
-        controls_layout.addWidget(self.signal_combo, 4, 1, 1, 3)
+        
+        # Add selection layouts
+        beam_widget = QWidget()
+        beam_widget.setLayout(beam_layout)
+        controls_layout.addWidget(beam_widget, 3, 0, 1, 4)
+        
+        sequence_widget = QWidget()
+        sequence_widget.setLayout(sequence_layout)
+        controls_layout.addWidget(sequence_widget, 4, 0, 1, 4)
+        
+        signal_widget = QWidget()
+        signal_widget.setLayout(signal_layout)
+        controls_layout.addWidget(signal_widget, 5, 0, 1, 4)
         
         # Tab widget for different visualizations
         self.tab_widget = QTabWidget()
@@ -380,6 +411,10 @@ class ModelTesterApp(QMainWindow):
             self.beam_combo.clear()
             self.beam_combo.addItems(self.beam_keys)
             
+            # Update beam slider
+            self.beam_slider.setMaximum(len(self.beam_keys) - 1)
+            self.beam_slider.setValue(0)
+            
             # Clear prediction results
             self.prediction_results = {}
             self.predict_status.setText("Ready - JSON file loaded")
@@ -436,9 +471,15 @@ class ModelTesterApp(QMainWindow):
             self.sequence_indices = sorted(list(sequence_indices))
             self.sequence_combo.clear()
             self.sequence_combo.addItems([f"Sequence {idx}" for idx in self.sequence_indices])
+            
+            # Update sequence slider
+            self.sequence_slider.setMaximum(len(self.sequence_indices) - 1 if self.sequence_indices else 0)
+            self.sequence_slider.setValue(0)
         else:
             self.sequence_combo.clear()
             self.sequence_indices = []
+            self.sequence_slider.setMaximum(0)
+            self.sequence_slider.setValue(0)
     
     def update_sequence_visualization(self, index):
         """Update visualization for selected sequence"""
@@ -490,6 +531,10 @@ class ModelTesterApp(QMainWindow):
             self.signal_combo.clear()
             self.signal_combo.addItems(signal_keys)
             
+            # Update signal slider
+            self.signal_slider.setMaximum(len(signal_keys) - 1 if signal_keys else 0)
+            self.signal_slider.setValue(0)
+            
             # Visualize sequence
             self.visualize_sequence(
                 sequence_signals, 
@@ -522,8 +567,11 @@ class ModelTesterApp(QMainWindow):
         # Convert signals to a 2D array
         signals_array = np.array(signals)
         
-        # Display as an image
-        im = ax.imshow(signals_array, aspect='auto', cmap='viridis')
+        # Transpose the array to swap axes (signal position on Y, signal index on X)
+        signals_array = signals_array.T
+        
+        # Display as an image with origin='lower' to flip the Y-axis (0 at bottom)
+        im = ax.imshow(signals_array, aspect='auto', cmap='viridis', origin='lower')
         
         # Add colorbar
         self.sequence_figure.colorbar(im, ax=ax, label='Signal Value')
@@ -532,9 +580,9 @@ class ModelTesterApp(QMainWindow):
         for i, (label, position) in enumerate(zip(labels, gt_positions)):
             if label > 0.5:  # If it's a defect
                 start, end = position
-                start_idx = int(start * signals_array.shape[1])
-                end_idx = int(end * signals_array.shape[1])
-                rect = plt.Rectangle((start_idx, i - 0.5), end_idx - start_idx, 1, 
+                start_idx = int(start * signals_array.shape[0])
+                end_idx = int(end * signals_array.shape[0])
+                rect = plt.Rectangle((i - 0.5, start_idx), 1, end_idx - start_idx, 
                                     fill=False, edgecolor='red', linewidth=2)
                 ax.add_patch(rect)
         
@@ -542,16 +590,16 @@ class ModelTesterApp(QMainWindow):
         for i, (prob, position) in enumerate(zip(pred_probs, pred_positions)):
             if prob > 0.5:  # If prediction confidence is high enough
                 start, end = position
-                start_idx = int(start * signals_array.shape[1])
-                end_idx = int(end * signals_array.shape[1])
-                rect = plt.Rectangle((start_idx, i - 0.5), end_idx - start_idx, 1, 
+                start_idx = int(start * signals_array.shape[0])
+                end_idx = int(end * signals_array.shape[0])
+                rect = plt.Rectangle((i - 0.5, start_idx), 1, end_idx - start_idx, 
                                     fill=False, edgecolor='blue', linewidth=2)
                 ax.add_patch(rect)
-                ax.text(start_idx, i + 0.3, f"{prob:.2f}", color='blue', fontsize=8)
+                ax.text(i, start_idx, f"{prob:.2f}", color='blue', fontsize=8)
         
         # Add labels and title
-        ax.set_xlabel('Signal Position')
-        ax.set_ylabel('Signal Index')
+        ax.set_xlabel('Scan Index')
+        ax.set_ylabel('Depth (in signal indexes)')
         ax.set_title(f'Sequence Visualization - Beam: {self.beam_keys[self.beam_combo.currentIndex()]}, ' +
                     f'Sequence: {self.sequence_indices[self.sequence_combo.currentIndex()]}')
         
@@ -601,10 +649,20 @@ class ModelTesterApp(QMainWindow):
         # Update canvas
         self.signal_canvas.draw()
     
-    def show_error(self, message):
-        """Show error message"""
-        self.predict_status.setText(f"Error: {message}")
-        print(f"Error: {message}")
+    def on_beam_slider_changed(self, value):
+        """Handle beam slider value change"""
+        if 0 <= value < self.beam_combo.count():
+            self.beam_combo.setCurrentIndex(value)
+    
+    def on_sequence_slider_changed(self, value):
+        """Handle sequence slider value change"""
+        if 0 <= value < self.sequence_combo.count():
+            self.sequence_combo.setCurrentIndex(value)
+    
+    def on_signal_slider_changed(self, value):
+        """Handle signal slider value change"""
+        if 0 <= value < self.signal_combo.count():
+            self.signal_combo.setCurrentIndex(value)
 
 
 if __name__ == "__main__":
