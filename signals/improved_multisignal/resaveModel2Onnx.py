@@ -8,7 +8,7 @@ def export_model_to_onnx(model, device, model_path, onnx_model_path, signal_leng
     model.eval()
 
 
-    dummy_input = torch.randn(1, 50, signal_length).to(device)
+    dummy_input = torch.randn(1, 251, signal_length).to(device)
     torch.onnx.export(
         model,
         dummy_input,
@@ -44,7 +44,7 @@ model = ImprovedMultiSignalClassifier(
     ).to(device)
 
 modelname = "ImprovedMSC"
-attempt = "000"
+attempt = "001"
 model_path = f'models/improved_model_20250615_193609/best_model.pth'
 export_model_to_onnx(model, device, model_path,
                      f'models/{attempt}-{modelname}.onnx', signal_length, hidden_sizes)
