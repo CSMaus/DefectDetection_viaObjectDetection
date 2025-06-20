@@ -219,6 +219,7 @@ class ModelTesterApp(QMainWindow):
         self.signal_keys = []
         self.sequence_indices = []
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        print("Device: ", self.device)
         
         # Setup UI
         self.setup_ui()
@@ -355,7 +356,7 @@ class ModelTesterApp(QMainWindow):
         
         try:
             # Load model checkpoint
-            checkpoint = torch.load(model_path, map_location=self.device)
+            checkpoint = torch.load(model_path, map_location=self.device, weights_only=True)
             
             # Create model instance
             signal_length = 320  # Default, will be updated when processing data
