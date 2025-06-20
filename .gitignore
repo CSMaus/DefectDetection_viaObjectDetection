@@ -33,3 +33,5 @@
 *.pkl
 /SignalSequenceDetection/signal_dataset_38
 /SignalSequenceDetection/signal_dataset_defected
+/signals/improved_multisignal/models
+/SignalSequenceDetection/.idea
