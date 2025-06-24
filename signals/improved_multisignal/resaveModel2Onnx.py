@@ -1,40 +1,18 @@
 from improved_model import ImprovedMultiSignalClassifier
 import torch
 import os
-import torch.nn as nn
-
-# Create a wrapper class that includes the sigmoid activation explicitly
-class ModelWithSigmoid(nn.Module):
-    def __init__(self, base_model):
-        super(ModelWithSigmoid, self).__init__()
-        self.base_model = base_model
-        
-    def forward(self, x):
-        defect_prob, defect_start, defect_end = self.base_model(x)
-        
-        # Ensure all outputs are properly normalized to [0,1]
-        defect_prob = torch.sigmoid(defect_prob)
-        defect_start = torch.sigmoid(defect_start)
-        defect_end = torch.sigmoid(defect_end)
-        
-        return defect_prob, defect_start, defect_end
 
 def export_model_to_onnx(model, device, model_path, onnx_model_path, signal_length, hidden_sizes, num_heads=4):
-    # Load the model weights
     checkpoint = torch.load(model_path, map_location=device)
     model.load_state_dict(checkpoint['model_state_dict'])
     model.eval()
-    
-    # Create the wrapper model with explicit sigmoid
-    wrapped_model = ModelWithSigmoid(model)
-    wrapped_model.eval()
 
     # Create dummy input for ONNX export
     dummy_input = torch.randn(1, 251, signal_length).to(device)
     
     # Export to ONNX
     torch.onnx.export(
-        wrapped_model,
+        model,
         dummy_input,
         onnx_model_path,
         export_params=True,
