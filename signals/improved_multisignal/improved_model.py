@@ -144,9 +144,15 @@ class ImprovedMultiSignalClassifier(nn.Module):
         outputs = self.classifier(shared_out)
         
         # Split and apply appropriate activations
-        defect_prob = torch.sigmoid(outputs[:, :, 0])
-        defect_start = torch.sigmoid(outputs[:, :, 1])  # Direct sigmoid for 0-1 range
-        defect_end = torch.sigmoid(outputs[:, :, 2])    # Direct sigmoid for 0-1 range
+        defect_prob = torch.sigmoid(outputs[:, :, 0])  # Keep sigmoid for binary classification
+        
+        # Direct regression for position prediction (no sigmoid)
+        defect_start = outputs[:, :, 1]
+        defect_end = outputs[:, :, 2]
+        
+        # Ensure positions are in [0,1] range using clamping instead of sigmoid
+        defect_start = torch.clamp(defect_start, 0.0, 1.0)
+        defect_end = torch.clamp(defect_end, 0.0, 1.0)
         
         return defect_prob, defect_start, defect_end
 

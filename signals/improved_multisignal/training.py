@@ -72,8 +72,9 @@ def train_model(model, train_loader, val_loader, optimizer, scheduler, num_epoch
             
             pos_mask = (labels > 0.5).float()
             if pos_mask.sum() > 0:
-                start_loss = F.mse_loss(defect_start * pos_mask, defect_positions[:, :, 0] * pos_mask, reduction='sum') / (pos_mask.sum() + 1e-8)
-                end_loss = F.mse_loss(defect_end * pos_mask, defect_positions[:, :, 1] * pos_mask, reduction='sum') / (pos_mask.sum() + 1e-8)
+                # Use Smooth L1 Loss (Huber Loss) for position prediction
+                start_loss = F.smooth_l1_loss(defect_start * pos_mask, defect_positions[:, :, 0] * pos_mask, reduction='sum') / (pos_mask.sum() + 1e-8)
+                end_loss = F.smooth_l1_loss(defect_end * pos_mask, defect_positions[:, :, 1] * pos_mask, reduction='sum') / (pos_mask.sum() + 1e-8)
                 pos_loss = (start_loss + end_loss) / 2
             else:
                 pos_loss = torch.tensor(0.0, device=device)
@@ -115,8 +116,9 @@ def train_model(model, train_loader, val_loader, optimizer, scheduler, num_epoch
                 
                 pos_mask = (labels > 0.5).float()
                 if pos_mask.sum() > 0:
-                    start_loss = F.mse_loss(defect_start * pos_mask, defect_positions[:, :, 0] * pos_mask, reduction='sum') / (pos_mask.sum() + 1e-8)
-                    end_loss = F.mse_loss(defect_end * pos_mask, defect_positions[:, :, 1] * pos_mask, reduction='sum') / (pos_mask.sum() + 1e-8)
+                    # Use Smooth L1 Loss (Huber Loss) for position prediction
+                    start_loss = F.smooth_l1_loss(defect_start * pos_mask, defect_positions[:, :, 0] * pos_mask, reduction='sum') / (pos_mask.sum() + 1e-8)
+                    end_loss = F.smooth_l1_loss(defect_end * pos_mask, defect_positions[:, :, 1] * pos_mask, reduction='sum') / (pos_mask.sum() + 1e-8)
                     pos_loss = (start_loss + end_loss) / 2
                 else:
                     pos_loss = torch.tensor(0.0, device=device)
