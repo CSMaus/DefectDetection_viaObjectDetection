@@ -339,12 +339,12 @@ def main():
     dropout = 0.2
     num_transformer_layers = 4
     batch_size = 8
-    num_epochs = 15  # Increased for defect-focused training
-    learning_rate = 0.001
+    num_epochs = 15
+    learning_rate = 0.0005
     weight_decay = 0.01
     
     json_dir = "json_data/"
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M")
     save_dir = f"models/defect_focused_model_{timestamp}"
     
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -354,7 +354,7 @@ def main():
     train_loader, val_loader = get_defect_focused_dataloader(
         json_dir, 
         batch_size=batch_size, 
-        seq_length=50, 
+        seq_length=30,
         shuffle=True,
         validation_split=0.2,
         min_defects_per_sequence=1  # At least 1 defect per sequence
@@ -391,25 +391,25 @@ def main():
     with open(os.path.join(save_dir, 'defect_focused_training_history.json'), 'w') as f:
         json.dump(history, f)
     
-    # Export ONNX model
-    dummy_input = torch.randn(1, 50, signal_length).to(device)
-    torch.onnx.export(
-        model,
-        dummy_input,
-        os.path.join(save_dir, 'defect_focused_model.onnx'),
-        export_params=True,
-        opset_version=12,
-        input_names=['input'],
-        output_names=['defect_prob', 'defect_start', 'defect_end'],
-        dynamic_axes={
-            'input': {0: 'batch_size', 1: 'num_signals'},
-            'defect_prob': {0: 'batch_size', 1: 'num_signals'},
-            'defect_start': {0: 'batch_size', 1: 'num_signals'},
-            'defect_end': {0: 'batch_size', 1: 'num_signals'},
-        }
-    )
-    
-    print(f"Defect-focused model exported to {os.path.join(save_dir, 'defect_focused_model.onnx')}")
+    # in separate script will export with correct version ONNX model
+    # dummy_input = torch.randn(1, 50, signal_length).to(device)
+    # torch.onnx.export(
+    #     model,
+    #     dummy_input,
+    #     os.path.join(save_dir, 'defect_focused_model.onnx'),
+    #     export_params=True,
+    #     opset_version=12,
+    #     input_names=['input'],
+    #     output_names=['defect_prob', 'defect_start', 'defect_end'],
+    #     dynamic_axes={
+    #         'input': {0: 'batch_size', 1: 'num_signals'},
+    #         'defect_prob': {0: 'batch_size', 1: 'num_signals'},
+    #         'defect_start': {0: 'batch_size', 1: 'num_signals'},
+    #         'defect_end': {0: 'batch_size', 1: 'num_signals'},
+    #     }
+    # )
+    #
+    # print(f"Defect-focused model exported to {os.path.join(save_dir, 'defect_focused_model.onnx')}")
 
 
 if __name__ == "__main__":
