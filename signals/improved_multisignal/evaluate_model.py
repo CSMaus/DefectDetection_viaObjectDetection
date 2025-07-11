@@ -1,3 +1,4 @@
+from datetime import datetime
 import os
 import json
 import torch
@@ -464,44 +465,34 @@ def main():
     
     args = parser.parse_args()
     
-    # Create output directory
     os.makedirs(args.output_dir, exist_ok=True)
     
-    # Initialize evaluator
     evaluator = ModelEvaluator(args.model_path, args.json_dir, args.seq_length)
     
     # Run evaluation
     print("Starting model evaluation...")
     metrics = evaluator.run_evaluation()
-    
-    # Print results
     evaluator.print_metrics(metrics)
-    
-    # Save results
     metrics_path = os.path.join(args.output_dir, 'evaluation_metrics.json')
     evaluator.save_metrics(metrics, metrics_path)
-    
-    # Create plots
     evaluator.plot_metrics(metrics, args.output_dir)
     
     print(f"\nEvaluation complete! Results saved to: {args.output_dir}")
 
 
 if __name__ == "__main__":
-    # Set your paths here for PyCharm execution
-    MODEL_PATH = "models/improved_model_20250710_193851/best_model.pth"  # CHANGE THIS to your actual model path
-    JSON_DIR = "json_data"    # CHANGE THIS if your JSON directory is different
-    OUTPUT_DIR = "evaluation_results"
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M")
+    MODEL_PATH = "models/enhanced_position_model_20250711_1601/best_model.pth"
+    JSON_DIR = "json_data"
+    OUTPUT_DIR = f"evaluation_results-{timestamp}"
     
-    # Create output directory
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     
-    # Run evaluation directly (for PyCharm)
     print("Starting model evaluation...")
     evaluator = ModelEvaluator(MODEL_PATH, JSON_DIR)
     metrics = evaluator.run_evaluation()
     evaluator.print_metrics(metrics)
-    evaluator.save_metrics(metrics, os.path.join(OUTPUT_DIR, 'evaluation_metrics.json'))
+    evaluator.save_metrics(metrics, os.path.join(OUTPUT_DIR, f'evaluation_metrics-{timestamp}.json'))
     evaluator.plot_metrics(metrics, OUTPUT_DIR)
     
     print(f"\nEvaluation complete! Results saved to: {OUTPUT_DIR}")
