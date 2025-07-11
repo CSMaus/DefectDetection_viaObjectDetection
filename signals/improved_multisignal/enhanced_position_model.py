@@ -119,10 +119,13 @@ class EnhancedPositionMultiSignalClassifier(nn.Module):
             nn.Linear(hidden_sizes[1] // 2, 1)
         )
         
-        # Position regression head (much more sophisticated)
+        # Position regression head (separate module after transformer)
+        # Input: [original_features + transformer_features + detection_confidence]
+        position_input_dim = hidden_sizes[1] + hidden_sizes[1] + 1  # shared + transformer + detection_prob
+        
         self.position_head = nn.Sequential(
-            # First layer: extract position-relevant features
-            nn.Linear(hidden_sizes[1], hidden_sizes[1]),
+            # First layer: process combined features
+            nn.Linear(position_input_dim, hidden_sizes[1]),
             nn.LayerNorm(hidden_sizes[1]),
             nn.ReLU(),
             nn.Dropout(dropout * 0.5),
@@ -143,9 +146,9 @@ class EnhancedPositionMultiSignalClassifier(nn.Module):
             nn.Linear(hidden_sizes[1] // 2, 2)  # [start, end]
         )
         
-        # Multi-scale position prediction (additional head for robustness)
+        # Multi-scale position prediction (coarse head)
         self.position_head_coarse = nn.Sequential(
-            nn.Linear(hidden_sizes[1], hidden_sizes[1] // 4),
+            nn.Linear(position_input_dim, hidden_sizes[1] // 4),
             nn.ReLU(),
             nn.Linear(hidden_sizes[1] // 4, 2)  # Coarse position prediction
         )
@@ -173,21 +176,29 @@ class EnhancedPositionMultiSignalClassifier(nn.Module):
         # Add positional encoding
         shared_out = self.position_encoding(shared_out)
         
-        # Apply transformer layers
+        # Apply transformer layers (for detection features)
+        transformer_features = shared_out
         for transformer in self.transformer_layers:
-            shared_out = transformer(shared_out)
+            transformer_features = transformer(transformer_features)
         
-        # *** KEY CHANGE: Use specialized heads ***
-        
-        # Detection prediction
-        detection_logits = self.detection_head(shared_out).squeeze(-1)
+        # *** DETECTION HEAD: Uses transformer features directly ***
+        detection_logits = self.detection_head(transformer_features).squeeze(-1)
         defect_prob = torch.sigmoid(detection_logits)
         
-        # Position prediction (fine-grained)
-        position_fine = self.position_head(shared_out)
+        # *** POSITION MODULE: Separate processing AFTER transformer ***
+        # Only process signals where detection confidence is reasonable
+        # Use original shared features + detection context for position prediction
+        position_input = torch.cat([
+            shared_out,  # Original features before transformer
+            transformer_features,  # Detection-optimized features
+            defect_prob.unsqueeze(-1)  # Detection confidence as context
+        ], dim=-1)
         
-        # Position prediction (coarse-grained for robustness)
-        position_coarse = self.position_head_coarse(shared_out)
+        # Position prediction (fine-grained)
+        position_fine = self.position_head(position_input)
+        
+        # Position prediction (coarse-grained for robustness)  
+        position_coarse = self.position_head_coarse(position_input)
         
         # Combine fine and coarse predictions (weighted average)
         position_combined = 0.7 * position_fine + 0.3 * position_coarse
@@ -209,7 +220,8 @@ class EnhancedPositionMultiSignalClassifier(nn.Module):
         
         # Add small gap to prevent start == end
         gap = 0.01
-        defect_end = torch.clamp(defect_end, min=defect_start + gap, max=1.0)
+        defect_end = torch.maximum(defect_end, defect_start + gap)
+        defect_end = torch.clamp(defect_end, max=1.0)
         
         return defect_prob, defect_start, defect_end
 

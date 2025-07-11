@@ -124,22 +124,17 @@ def train_enhanced_position_model(model, train_loader, val_loader, optimizer, sc
     patience_counter = 0
     
     for epoch in range(num_epochs):
-        # Determine training stage
+        # SIMPLIFIED TRAINING STAGES - Detection Priority
         if epoch < 3:
-            stage = "detection_only"
-            model.freeze_position_head()
-            model.unfreeze_detection_head()
-            pos_weight = 0.0  # No position training
-        elif epoch < 10:
-            stage = "position_only"
-            model.freeze_detection_head()
-            model.unfreeze_position_head()
-            pos_weight = 5.0  # Heavy position training
+            stage = "detection_focus"
+            # Don't freeze anything, just weight detection much higher
+            detection_weight = 5.0  # Strong detection priority
+            position_weight = 0.5   # Minimal position training
         else:
-            stage = "joint_training"
-            model.unfreeze_detection_head()
-            model.unfreeze_position_head()
-            pos_weight = 3.0  # Balanced training
+            stage = "balanced_training"
+            # Balanced training but still prioritize detection
+            detection_weight = 3.0  # Detection priority maintained
+            position_weight = 1.0   # Position training enabled
         
         model.train()
         train_loss = 0.0
@@ -151,7 +146,7 @@ def train_enhanced_position_model(model, train_loader, val_loader, optimizer, sc
         train_pos_correct_strict = 0
         train_pos_total = 0
         
-        print(f"Epoch {epoch+1}/{num_epochs} - Stage: {stage}")
+        print(f"Epoch {epoch+1}/{num_epochs} - Stage: {stage} (Det:{detection_weight}x, Pos:{position_weight}x)")
         
         for signals, labels, defect_positions in tqdm(train_loader, desc="Training"):
             signals = signals.to(device)
@@ -171,7 +166,7 @@ def train_enhanced_position_model(model, train_loader, val_loader, optimizer, sc
             # Position loss ONLY on GT defective signals
             gt_defect_mask = (labels > 0.5).float()
             
-            if gt_defect_mask.sum() > 0 and pos_weight > 0:
+            if gt_defect_mask.sum() > 0 and position_weight > 0:
                 # Use enhanced position loss
                 pos_loss = enhanced_position_loss(
                     defect_start, defect_end,
@@ -203,13 +198,8 @@ def train_enhanced_position_model(model, train_loader, val_loader, optimizer, sc
             else:
                 pos_loss = torch.tensor(0.0, device=device)
             
-            # Combined loss
-            if stage == "detection_only":
-                loss = cls_loss
-            elif stage == "position_only":
-                loss = pos_loss  # Only position loss
-            else:
-                loss = cls_loss + pos_weight * pos_loss
+            # DETECTION-PRIORITY combined loss
+            loss = detection_weight * cls_loss + position_weight * pos_loss
             
             optimizer.zero_grad()
             loss.backward()
@@ -281,12 +271,7 @@ def train_enhanced_position_model(model, train_loader, val_loader, optimizer, sc
                 else:
                     pos_loss = torch.tensor(0.0, device=device)
                 
-                if stage == "detection_only":
-                    loss = cls_loss
-                elif stage == "position_only":
-                    loss = pos_loss
-                else:
-                    loss = cls_loss + pos_weight * pos_loss
+                loss = detection_weight * cls_loss + position_weight * pos_loss
                 
                 val_loss += loss.item()
                 val_cls_loss += cls_loss.item()
