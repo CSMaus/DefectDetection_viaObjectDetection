@@ -1,4 +1,5 @@
 from improved_model import ImprovedMultiSignalClassifier
+from enhanced_position_model_acc091 import EnhancedPositionMultiSignalClassifier
 import torch
 import os
 
@@ -38,16 +39,17 @@ num_transformer_layers = 4
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Using device: {device}")
 
-model = ImprovedMultiSignalClassifier(
+# model = ImprovedMultiSignalClassifier(
+model = EnhancedPositionMultiSignalClassifier(
         signal_length=signal_length,
         hidden_sizes=hidden_sizes,
         num_heads=num_heads,
         num_transformer_layers=num_transformer_layers
     ).to(device)
 
-modelname = "ImprovedMSC"
-attempt = "002"
+modelname = "EnhancedPositionMSC"
+attempt = "000"
 # model_path = f'models/improved_model_20250615_193609/best_model.pth'
-model_path = f'models/improved_model_20250710_193851/4_cp_improved_model.pth'
+model_path = f'models/enhanced_position_model_20250711_1601/best_enhanced_position_model.pth'
 export_model_to_onnx(model, device, model_path,
                      f'models/{attempt}-{modelname}.onnx', signal_length, hidden_sizes)

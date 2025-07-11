@@ -13,6 +13,8 @@ from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 
 from improved_model import ImprovedMultiSignalClassifier
+from enhanced_position_model_acc091 import EnhancedPositionMultiSignalClassifier
+
 
 
 class PredictionWorker(QThread):
@@ -364,7 +366,8 @@ class ModelTesterApp(QMainWindow):
             num_heads = 8
             num_transformer_layers = 4
             
-            self.model = ImprovedMultiSignalClassifier(
+            # self.model = ImprovedMultiSignalClassifier(
+            self.model = EnhancedPositionMultiSignalClassifier(
                 signal_length=signal_length,
                 hidden_sizes=hidden_sizes,
                 num_heads=num_heads,
