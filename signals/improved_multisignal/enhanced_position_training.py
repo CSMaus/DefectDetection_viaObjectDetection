@@ -421,12 +421,20 @@ def plot_enhanced_training_history(history, save_path=None):
     
     plt.subplot(3, 3, 8)
     # Training stage visualization
-    stage_nums = [{'detection_only': 1, 'position_only': 2, 'joint_training': 3}[stage] for stage in history['training_stage']]
+    stage_mapping = {
+        'detection_focus': 1, 
+        'balanced_training': 2,
+        # Legacy stage names (in case they exist)
+        'detection_only': 1, 
+        'position_only': 2, 
+        'joint_training': 3
+    }
+    stage_nums = [stage_mapping.get(stage, 1) for stage in history['training_stage']]
     plt.plot(history['epochs'], stage_nums, marker='o')
     plt.title('Training Stage')
     plt.xlabel('Epoch')
     plt.ylabel('Stage')
-    plt.yticks([1, 2, 3], ['Detection Only', 'Position Only', 'Joint Training'])
+    plt.yticks([1, 2], ['Detection Focus', 'Balanced Training'])
     plt.grid(True)
     
     plt.subplot(3, 3, 9)
