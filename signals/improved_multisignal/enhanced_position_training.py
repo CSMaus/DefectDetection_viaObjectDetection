@@ -459,11 +459,11 @@ def main():
     signal_length = 320
     hidden_sizes = [128, 64, 32]
     num_heads = 8
-    dropout = 0.15  # Slightly reduced dropout
+    dropout = 0.15
     num_transformer_layers = 4
     batch_size = 8
-    num_epochs = 15
-    learning_rate = 0.0008  # Slightly higher for better position learning
+    num_epochs = 25
+    learning_rate = 0.0008
     weight_decay = 0.01
     
     json_dir = "json_data/"

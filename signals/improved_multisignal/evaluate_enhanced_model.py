@@ -11,7 +11,8 @@ from tqdm import tqdm
 import argparse
 
 # from improved_model import ImprovedMultiSignalClassifier
-from enhanced_position_model_acc091 import EnhancedPositionMultiSignalClassifier
+# from enhanced_position_model_acc091 import EnhancedPositionMultiSignalClassifier
+from enhanced_position_model import EnhancedPositionMultiSignalClassifier
 
 class ModelEvaluator:
     def __init__(self, model_path, json_dir, seq_length=50, device=None):
@@ -482,9 +483,10 @@ def main():
 
 if __name__ == "__main__":
     timestamp = datetime.now().strftime("%Y%m%d_%H%M")
-    MODEL_PATH = "models/enhanced_position_model_20250711_1601/best_model.pth"
+    # MODEL_PATH = "models/enhanced_position_model_20250711_1601/best_model.pth"
+    MODEL_PATH = "models/enhanced_position_model_20250712_1529/best_enhanced_position_model.pth"
     JSON_DIR = "json_data"
-    OUTPUT_DIR = f"evaluation_results-EnhancedPosition091"
+    OUTPUT_DIR = f"evaluation_results-EnhancedPosition1"
     
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     
@@ -492,7 +494,7 @@ if __name__ == "__main__":
     evaluator = ModelEvaluator(MODEL_PATH, JSON_DIR)
     metrics = evaluator.run_evaluation()
     evaluator.print_metrics(metrics)
-    evaluator.save_metrics(metrics, os.path.join(OUTPUT_DIR, f'evaluation_metrics-EnhancedPosition091.json'))
+    evaluator.save_metrics(metrics, os.path.join(OUTPUT_DIR, f'evaluation_metrics-EnhancedPosition1.json'))
     evaluator.plot_metrics(metrics, OUTPUT_DIR)
     
     print(f"\nEvaluation complete! Results saved to: {OUTPUT_DIR}")
