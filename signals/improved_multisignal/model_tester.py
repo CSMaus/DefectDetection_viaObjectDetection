@@ -383,7 +383,7 @@ class ModelTesterApp(QMainWindow):
             
             print(f"Model loaded from {model_path}")
         except Exception as e:
-            self.show_error(f"Error loading model: {e}")
+            print(f"Error loading model: {e}")
     
     def select_json_dir(self):
         """Select directory containing JSON files"""
@@ -428,11 +428,11 @@ class ModelTesterApp(QMainWindow):
     def run_predictions(self):
         """Run predictions on all sequences in the JSON file"""
         if not self.model:
-            self.show_error("No model loaded")
+            print("No model loaded")
             return
         
         if not self.current_json_data:
-            self.show_error("No JSON file loaded")
+            print("No JSON file loaded")
             return
         
         self.predict_status.setText("Running predictions...")

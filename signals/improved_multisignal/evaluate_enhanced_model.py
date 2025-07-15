@@ -486,7 +486,7 @@ if __name__ == "__main__":
     # MODEL_PATH = "models/enhanced_position_model_20250711_1601/best_model.pth"
     MODEL_PATH = "models/enhanced_position_model_20250712_1529/best_enhanced_position_model.pth"
     JSON_DIR = "json_data"
-    OUTPUT_DIR = f"evaluation_results-EnhancedPosition1"
+    OUTPUT_DIR = f"evaluation_results-EnhancedPosition2"
     
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     
@@ -494,7 +494,7 @@ if __name__ == "__main__":
     evaluator = ModelEvaluator(MODEL_PATH, JSON_DIR)
     metrics = evaluator.run_evaluation()
     evaluator.print_metrics(metrics)
-    evaluator.save_metrics(metrics, os.path.join(OUTPUT_DIR, f'evaluation_metrics-EnhancedPosition1.json'))
+    evaluator.save_metrics(metrics, os.path.join(OUTPUT_DIR, f'evaluation_metrics-EnhancedPosition.json'))
     evaluator.plot_metrics(metrics, OUTPUT_DIR)
     
     print(f"\nEvaluation complete! Results saved to: {OUTPUT_DIR}")
