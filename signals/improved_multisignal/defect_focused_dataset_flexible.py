@@ -36,9 +36,10 @@ class FlexibleDefectFocusedJsonSignalDataset(Dataset):
     def _extract_defect_info_from_scan_key(self, scan_key):
         """
         Extract defect information from scan key, supporting both old and new formats.
+        FIXED: Now properly handles negative defect start positions.
         
-        Old format: "0_Health" or "0_Defect_0-14"
-        New format: "0_Health" or "0_Defect_0_14" (with S part in filename)
+        Old format: "0_Health" or "0_Defect_0-14" or "0_Defect_-5-14" (negative start)
+        New format: "0_Health" or "0_Defect_0_14" or "0_Defect_-5_14" (negative start)
         
         Returns:
             tuple: (is_defect, defect_start, defect_end)
@@ -58,21 +59,41 @@ class FlexibleDefectFocusedJsonSignalDataset(Dataset):
                 # Try different formats for defect range
                 defect_part = parts[2]
                 
-                # Handle format like "0-14" (with dash)
+                # Handle format like "0-14" or "-5-14" (with dash)
                 if '-' in defect_part:
-                    defect_range = defect_part.split('-')
-                    if len(defect_range) == 2:
-                        defect_start = float(defect_range[0])
-                        defect_end = float(defect_range[1])
-                        return True, defect_start, defect_end
-                
-                # Handle format like "0_14" (parts[2] and parts[3])
-                if len(parts) >= 4:
-                    defect_start = float(parts[2])
-                    defect_end = float(parts[3])
+                    # Need to be careful with negative numbers
+                    # Split by '-' but handle negative start values
+                    if defect_part.startswith('-'):
+                        # Negative start: "-5-14" -> ["-5", "14"]
+                        remaining = defect_part[1:]  # Remove first '-'
+                        if '-' in remaining:
+                            parts_split = remaining.split('-', 1)
+                            defect_start = -float(parts_split[0])  # Make it negative
+                            defect_end = float(parts_split[1])
+                        else:
+                            # Just negative number: "-5" -> assume small range
+                            defect_start = -float(remaining)
+                            defect_end = defect_start + 1.0
+                    else:
+                        # Positive start: "0-14" -> ["0", "14"]
+                        defect_range = defect_part.split('-')
+                        if len(defect_range) == 2:
+                            defect_start = float(defect_range[0])
+                            defect_end = float(defect_range[1])
+                        else:
+                            # Single positive number
+                            defect_start = float(defect_part)
+                            defect_end = defect_start + 1.0
+                    
                     return True, defect_start, defect_end
                 
-                # Single number case (assume small defect)
+                # Handle format like "0_14" or "-5_14" (parts[2] and parts[3])
+                if len(parts) >= 4:
+                    defect_start = float(parts[2])  # Can be negative
+                    defect_end = float(parts[3])    # Always positive
+                    return True, defect_start, defect_end
+                
+                # Single number case (can be negative)
                 defect_pos = float(defect_part)
                 return True, defect_pos, defect_pos + 1.0
                 
