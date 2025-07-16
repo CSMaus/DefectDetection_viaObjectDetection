@@ -466,7 +466,7 @@ def main():
     learning_rate = 0.0008
     weight_decay = 0.01
     
-    json_dir = "json_data/"
+    json_dir = "json_data_07/"  # json_data
     timestamp = datetime.now().strftime("%Y%m%d_%H%M")
     save_dir = f"models/enhanced_position_model_{timestamp}"
     
