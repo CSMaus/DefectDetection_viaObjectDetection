@@ -124,6 +124,7 @@ class FlexibleDefectFocusedJsonSignalDataset(Dataset):
     def _extract_defect_from_filename(self, filename):
         """
         Extract defect information from filename for additional validation.
+        FIXED: Now properly handles negative defect start positions.
         
         Args:
             filename: JSON filename
@@ -135,22 +136,22 @@ class FlexibleDefectFocusedJsonSignalDataset(Dataset):
             file_format = self._detect_file_format(filename)
             
             if file_format == 'new':
-                # New format: WOT_D33-D36_01_Ch-0-S350_400-D0_14.json
-                # Look for the D part after S part
-                d_pattern = r'-D(\d+)_(\d+)\.json$'
+                # New format: WOT_D33-D36_01_Ch-0-S350_400-D0_14.json or WOT_D33-D36_01_Ch-0-S350_400-D-5_14.json
+                # Look for the D part after S part - FIXED to handle negative numbers
+                d_pattern = r'-D(-?\d+)_(\d+)\.json$'
                 match = re.search(d_pattern, filename)
                 if match:
-                    defect_start = float(match.group(1))
-                    defect_end = float(match.group(2))
+                    defect_start = float(match.group(1))  # Can be negative
+                    defect_end = float(match.group(2))    # Always positive
                     return True, defect_start, defect_end
             else:
-                # Old format: WOT_D33-D36_01_Ch-0_D0-14.json
-                # Look for the D part at the end
-                d_pattern = r'_D(\d+)-(\d+)\.json$'
+                # Old format: WOT_D33-D36_01_Ch-0_D0-14.json or WOT_D33-D36_01_Ch-0_D-5-14.json
+                # Look for the D part at the end - FIXED to handle negative numbers
+                d_pattern = r'_D(-?\d+)-(\d+)\.json$'
                 match = re.search(d_pattern, filename)
                 if match:
-                    defect_start = float(match.group(1))
-                    defect_end = float(match.group(2))
+                    defect_start = float(match.group(1))  # Can be negative
+                    defect_end = float(match.group(2))    # Always positive
                     return True, defect_start, defect_end
             
             return False, None, None
@@ -171,13 +172,21 @@ class FlexibleDefectFocusedJsonSignalDataset(Dataset):
         # Analyze file formats
         old_format_count = 0
         new_format_count = 0
+        negative_defect_count = 0
+        
         for json_file in self.json_files:
             if self._detect_file_format(json_file) == 'new':
                 new_format_count += 1
             else:
                 old_format_count += 1
+            
+            # Check for negative defects in filename
+            has_defect, start, end = self._extract_defect_from_filename(json_file)
+            if has_defect and start is not None and start < 0:
+                negative_defect_count += 1
         
         print(f"File format analysis: {old_format_count} old format, {new_format_count} new format")
+        print(f"Files with negative defect start positions: {negative_defect_count}")
         
         # Process each JSON file
         for json_file in self.json_files:
@@ -186,6 +195,9 @@ class FlexibleDefectFocusedJsonSignalDataset(Dataset):
             
             # Extract defect info from filename for validation
             filename_has_defect, filename_defect_start, filename_defect_end = self._extract_defect_from_filename(json_file)
+            
+            if filename_has_defect and filename_defect_start is not None:
+                print(f"Processing {json_file}: defect range [{filename_defect_start}, {filename_defect_end}]")
             
             try:
                 with open(file_path, 'r') as f:
