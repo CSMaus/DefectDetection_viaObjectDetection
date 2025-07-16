@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 from datetime import datetime
 
 from fixed_enhanced_position_model import FixedEnhancedPositionMultiSignalClassifier
-from defect_focused_dataset import get_defect_focused_dataloader
+from defect_focused_dataset_flexible import get_flexible_defect_focused_dataloader
 from realistic_noise_augmentation import RealisticNoiseAugmentation
 
 
@@ -466,12 +466,14 @@ def main():
     
     json_dir = "json_data/"
     timestamp = datetime.now().strftime("%Y%m%d_%H%M")
-    save_dir = f"models/fixed_enhanced_position_model_{timestamp}"
+    save_dir = f"models/fixed_enhanced_position_model_flexible_{timestamp}"
     
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
-    print("FIXED Enhanced training:")
+    print("FIXED Enhanced training with FLEXIBLE file format support:")
     print("  - Supports both old and new JSON file naming conventions")
+    print("  - Old format: WOT_D33-D36_01_Ch-0_D0-14.json")
+    print("  - New format: WOT_D33-D36_01_Ch-0-S350_400-D0_14.json")
     print("  - Truly separate detection and position transformer paths")
     print("  - Stage 1: Detection path only (epochs 1-5)")
     print("  - Stage 2: Position path only (epochs 6-15)")
@@ -479,8 +481,8 @@ def main():
     print("  - Realistic noise augmentation (25% of sequences)")
     print("  - Enhanced position loss (L1 + IoU + consistency)")
     
-    # Get defect-focused train and validation loaders (using your original working code)
-    train_loader, val_loader = get_defect_focused_dataloader(
+    # Get flexible defect-focused train and validation loaders
+    train_loader, val_loader = get_flexible_defect_focused_dataloader(
         json_dir, 
         batch_size=batch_size, 
         seq_length=30,
@@ -515,9 +517,9 @@ def main():
         save_dir=save_dir
     )
     
-    plot_fixed_training_history(history, save_path=os.path.join(save_dir, 'fixed_enhanced_training_history.png'))
+    plot_fixed_training_history(history, save_path=os.path.join(save_dir, 'fixed_enhanced_training_history_flexible.png'))
     
-    with open(os.path.join(save_dir, 'fixed_enhanced_training_history.json'), 'w') as f:
+    with open(os.path.join(save_dir, 'fixed_enhanced_training_history_flexible.json'), 'w') as f:
         json.dump(history, f)
     
     print(f"FIXED Enhanced position model training complete!")

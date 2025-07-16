@@ -74,33 +74,8 @@ class DefectFocusedJsonSignalDataset(Dataset):
                         else:
                             all_lbls_for_beam[str(scan_idx)] = 1
                             try:
-                                defect_part = scan_key.split('_')[2]
-                                # Handle both formats: "0-14" and "0_14" 
-                                if '-' in defect_part:
-                                    # Handle negative start: "-5-14" vs "0-14"
-                                    if defect_part.startswith('-'):
-                                        # Negative start: "-5-14"
-                                        remaining = defect_part[1:]  # Remove first '-'
-                                        if '-' in remaining:
-                                            parts = remaining.split('-', 1)
-                                            defect_start = -float(parts[0])
-                                            defect_end = float(parts[1])
-                                        else:
-                                            defect_start = -float(remaining)
-                                            defect_end = defect_start + 1.0
-                                    else:
-                                        # Positive start: "0-14"
-                                        defect_range = defect_part.split('-')
-                                        defect_start, defect_end = float(defect_range[0]), float(defect_range[1])
-                                else:
-                                    # Handle underscore format if it exists in scan keys
-                                    if len(scan_key.split('_')) >= 4:
-                                        defect_start = float(scan_key.split('_')[2])
-                                        defect_end = float(scan_key.split('_')[3])
-                                    else:
-                                        defect_start = float(defect_part)
-                                        defect_end = defect_start + 1.0
-                                
+                                defect_range = scan_key.split('_')[2].split('-')
+                                defect_start, defect_end = float(defect_range[0]), float(defect_range[1])
                                 all_defects_for_beam[str(scan_idx)] = [defect_start, defect_end]
                             except:
                                 all_defects_for_beam[str(scan_idx)] = [0.0, 0.0]
