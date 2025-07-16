@@ -13,6 +13,7 @@ import argparse
 # from improved_model import ImprovedMultiSignalClassifier
 # from enhanced_position_model_acc091 import EnhancedPositionMultiSignalClassifier
 from enhanced_position_model import EnhancedPositionMultiSignalClassifier
+from fixed_enhanced_position_model import FixedEnhancedPositionMultiSignalClassifier
 
 class ModelEvaluator:
     def __init__(self, model_path, json_dir, seq_length=50, device=None):
@@ -57,7 +58,8 @@ class ModelEvaluator:
                 state_dict = checkpoint
             
             # Initialize model with default parameters (you may need to adjust these)
-            model = EnhancedPositionMultiSignalClassifier(
+            # model = EnhancedPositionMultiSignalClassifier(
+            model = FixedEnhancedPositionMultiSignalClassifier(
                 signal_length=320,
                 hidden_sizes=[128, 64, 32],
                 num_heads=8,
@@ -484,9 +486,10 @@ def main():
 if __name__ == "__main__":
     timestamp = datetime.now().strftime("%Y%m%d_%H%M")
     # MODEL_PATH = "models/enhanced_position_model_20250711_1601/best_model.pth"
-    MODEL_PATH = "models/enhanced_position_model_20250712_1529/best_enhanced_position_model.pth"
-    JSON_DIR = "json_data"
-    OUTPUT_DIR = f"evaluation_results-EnhancedPosition2"
+    # MODEL_PATH = "models/enhanced_position_model_20250712_1529/best_enhanced_position_model.pth"
+    MODEL_PATH = "models/fixed_enhanced_position_model_20250716_2032/best_fixed_enhanced_position_model.pth"
+    JSON_DIR = "json_data_all/"
+    OUTPUT_DIR = f"evaluation_results-FixedEnhancedPosition"
     
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     
@@ -494,7 +497,7 @@ if __name__ == "__main__":
     evaluator = ModelEvaluator(MODEL_PATH, JSON_DIR)
     metrics = evaluator.run_evaluation()
     evaluator.print_metrics(metrics)
-    evaluator.save_metrics(metrics, os.path.join(OUTPUT_DIR, f'evaluation_metrics-EnhancedPosition.json'))
+    evaluator.save_metrics(metrics, os.path.join(OUTPUT_DIR, f'evaluation_metrics-FixedEnhancedPosition.json'))
     evaluator.plot_metrics(metrics, OUTPUT_DIR)
     
     print(f"\nEvaluation complete! Results saved to: {OUTPUT_DIR}")
