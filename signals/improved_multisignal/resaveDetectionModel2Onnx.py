@@ -19,10 +19,8 @@ def export_detection_model_to_onnx(model, device, model_path, onnx_model_path, s
     
     model.eval()
 
-    # Create dummy input for ONNX export
     dummy_input = torch.randn(1, 50, signal_length).to(device)
     
-    # Export to ONNX
     torch.onnx.export(
         model,
         dummy_input,
@@ -48,7 +46,6 @@ dropout = 0.1
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Using device: {device}")
 
-# Choose model type: "Simple" or "Complex"
 model_type = "Complex"
 
 if model_type == "Simple":
@@ -70,10 +67,11 @@ elif model_type == "Complex":
     ).to(device)
     modelname = "ComplexDetectionModel"
 
-attempt = "001"
+attempt = "000"
 
-# SPECIFY YOUR CHECKPOINT PATH HERE
-model_path = f'models/Complex_20250717_0800/best_complex_detection.pth'  # CHANGE THIS PATH
+model_path = f'models/best_complex_detection.pth'
+# model_path = f'models/Complex_20250717_0800/best_complex_detection.pth'
+
 
 export_detection_model_to_onnx(model, device, model_path,
                      f'models/{attempt}-{modelname}.onnx', signal_length)
