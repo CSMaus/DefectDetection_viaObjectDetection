@@ -6,7 +6,18 @@ import os
 
 def export_model_to_onnx(model, device, model_path, onnx_model_path, signal_length):
     checkpoint = torch.load(model_path, map_location=device)
-    model.load_state_dict(checkpoint['model_state_dict'])
+    
+    # Debug: print checkpoint keys
+    print(f"Checkpoint keys: {list(checkpoint.keys())}")
+    
+    # Handle different checkpoint formats
+    if 'model_state_dict' in checkpoint:
+        print("Loading from 'model_state_dict'")
+        model.load_state_dict(checkpoint['model_state_dict'])
+    else:
+        print("Loading checkpoint directly as state dict")
+        model.load_state_dict(checkpoint)
+    
     model.eval()
 
     # Create dummy input for ONNX export
