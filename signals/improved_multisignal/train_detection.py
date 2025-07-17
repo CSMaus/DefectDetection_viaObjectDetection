@@ -14,6 +14,7 @@ from detection_models.complex_fix import ComplexDetectionModelFix
 from detection_models.noise_robust_tr2 import NoiseRobustDetectionModel
 from detection_models.pattern_embedding import PatternEmbeddingModel
 from detection_models.enhanced_pattern import EnhancedPatternModel
+from detection_models.direct_defect import DirectDefectModel
 
 from defect_focused_dataset import get_defect_focused_dataloader
 
@@ -242,7 +243,8 @@ def main():
         # "ComplexFix": ComplexDetectionModelFix(signal_length=320)
         # "NoiseRobust": NoiseRobustDetectionModel(signal_length=320)
         # "PatternEmbedding": PatternEmbeddingModel(signal_length=320)
-        "EnhancedPattern": EnhancedPatternModel(signal_length=320)
+        # "EnhancedPattern": EnhancedPatternModel(signal_length=320)
+        "DirectDefectModel": DirectDefectModel(signal_length=320)
     }
     
     results = {}
@@ -285,7 +287,7 @@ def main():
     results_path = os.path.join(main_models_dir, f"detection_training_results_{timestamp}.json")
     with open(results_path, 'w') as f:
         json.dump(combined_results, f, indent=2)
-    
+
     print(f"\nCombined results saved to: {results_path}")
 
 
