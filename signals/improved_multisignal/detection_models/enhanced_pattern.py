@@ -9,7 +9,7 @@ class EnhancedPatternModel(nn.Module):
     Multiple background prototypes + explicit defect discrimination
     Fixes both false positives (background as defects) and false negatives (missed defects)
     """
-    def __init__(self, signal_length=320, d_model=128, num_heads=12, num_layers=6, dropout=0.1, num_bg_prototypes=5):
+    def __init__(self, signal_length=320, d_model=128, num_heads=16, num_layers=8, dropout=0.1, num_bg_prototypes=5):
         super(EnhancedPatternModel, self).__init__()
         
         self.d_model = d_model

@@ -12,6 +12,9 @@ from detection_models.complex_detection_model import ComplexDetectionModel
 from detection_models.complex_onnx import ComplexDetectionModelONNX
 from detection_models.complex_fix import ComplexDetectionModelFix
 from detection_models.noise_robust_tr2 import NoiseRobustDetectionModel
+from detection_models.pattern_embedding import PatternEmbeddingModel
+from detection_models.enhanced_pattern import EnhancedPatternModel
+
 from defect_focused_dataset import get_defect_focused_dataloader
 
 
@@ -227,7 +230,7 @@ def main():
     # Load data
     train_loader, val_loader = get_defect_focused_dataloader(
         "json_data_0717", # "json_data_0716/",
-        batch_size=16, 
+        batch_size=8,
         seq_length=50,  # 30,
         shuffle=True,
         validation_split=0.2,
@@ -237,7 +240,9 @@ def main():
     models = {
         # "ComplexONNX": ComplexDetectionModelONNX(signal_length=320)
         # "ComplexFix": ComplexDetectionModelFix(signal_length=320)
-        "NoiseRobust": NoiseRobustDetectionModel(signal_length=320)
+        # "NoiseRobust": NoiseRobustDetectionModel(signal_length=320)
+        # "PatternEmbedding": PatternEmbeddingModel(signal_length=320)
+        "EnhancedPattern": EnhancedPatternModel(signal_length=320)
     }
     
     results = {}
