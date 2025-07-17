@@ -1,0 +1,15 @@
+Complex Detection Model Test Results
+==================================================
+Checkpoint: models/Complex_20250717_0800/best_complex_detection.pth
+Test Loss: 0.0749
+Accuracy: 0.9651
+Precision: 0.9281
+Recall: 0.9125
+F1-Score: 0.9202
+Total samples: 7050
+
+Confusion Matrix:
+True Negatives: 5385
+False Positives: 110
+False Negatives: 136
+True Positives: 1419

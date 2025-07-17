@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 
 from detection_models.simple_detection_model import SimpleDetectionModel
 from detection_models.complex_detection_model import ComplexDetectionModel
+from detection_models.complex_onnx import ComplexDetectionModelONNX
 from defect_focused_dataset import get_defect_focused_dataloader
 
 
@@ -197,14 +198,12 @@ def train_detection_model(model, train_loader, val_loader, num_epochs, device, m
         
         if val_accuracy > best_accuracy:
             best_accuracy = val_accuracy
-            # Save best model
             best_model_path = os.path.join(model_save_dir, f"best_{model_name.lower()}_detection.pth")
             torch.save(checkpoint, best_model_path)
             print(f"  New best accuracy: {val_accuracy:.4f}! Saved to {best_model_path}")
         
         print()
     
-    # Create and save training history plot
     plot_path = os.path.join(model_save_dir, 'training_history.png')
     plot_training_history(history, save_path=plot_path)
     
@@ -233,10 +232,8 @@ def main():
         min_defects_per_sequence=1
     )
     
-    # Test both models
     models = {
-        "Simple": SimpleDetectionModel(signal_length=320),
-        "Complex": ComplexDetectionModel(signal_length=320)
+        "ComplexONNX": ComplexDetectionModelONNX(signal_length=320)
     }
     
     results = {}
