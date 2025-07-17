@@ -24,10 +24,14 @@ def export_original_model_to_onnx(model_path, onnx_model_path, signal_length=320
     # model = PatternEmbeddingModel(signal_length=signal_length).to(device)
     # model = EnhancedPatternModel(signal_length=signal_length).to(device)
     model = DirectDefectModel(signal_length=signal_length,
-                                               d_model=64,
+                                                d_model=64,
                                                num_heads=16,
-                                               num_layers=6,
-                                               dropout=1).to(device)
+                                               num_layers=4,
+                                               dropout=0.5).to(device)
+                                               # d_model=64,
+                                               # num_heads=16,
+                                               # num_layers=6,
+                                               # dropout=1).to(device)
 
     # d_model=128, num_heads=8, num_layers=6, dropout=0.5  - this is for 008
     # 006 is the first simplest one with d_model=64, num_heads=4, num_layers=4, dropout=0.1
@@ -93,11 +97,11 @@ def export_original_model_to_onnx(model_path, onnx_model_path, signal_length=320
 # Main execution
 # modelname = "ComplexDetectionModel"
 modelname = "DirectDefectModel"
-attempt = "010"
+attempt = "011"
 # model_path = f'models/ComplexONNX_20250717_1746/best_complexonnx_detection.pth'
 # model_path = f'models/NoiseRobust_20250717_1838/best_noiserobust_detection.pth'
 # model_path = f'models/DirectDefectModel_20250717_2155/best_detection.pth'
-model_path = f'models/DirectDefectModel_20250718_0001/best_detection.pth'
+model_path = f'models/DirectDefectModel_20250718_0019/best_detection.pth'
 
 successful_export = export_original_model_to_onnx(
     model_path, 
