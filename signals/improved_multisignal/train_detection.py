@@ -200,7 +200,7 @@ def train_detection_model(model, train_loader, val_loader, num_epochs, device, m
         
         if val_accuracy > best_accuracy:
             best_accuracy = val_accuracy
-            best_model_path = os.path.join(model_save_dir, f"best_{model_name.lower()}_detection.pth")
+            best_model_path = os.path.join(model_save_dir, f"best_detection.pth")
             torch.save(checkpoint, best_model_path)
             print(f"  New best accuracy: {val_accuracy:.4f}! Saved to {best_model_path}")
         
