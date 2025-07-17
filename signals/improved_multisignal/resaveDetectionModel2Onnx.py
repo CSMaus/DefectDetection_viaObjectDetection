@@ -2,12 +2,12 @@ from detection_models.complex_detection_model import ComplexDetectionModel
 import torch
 import torch.nn as nn
 
-def make_onnx_compatible_model(original_model):
+def make_onnx_compatible_model(original_model, device):
     """Replace adaptive pooling with fixed pooling to make ONNX compatible"""
     
     # Create new model with same architecture but ONNX-compatible pooling
     class ONNXComplexDetectionModel(nn.Module):
-        def __init__(self, original_model):
+        def __init__(self, original_model, device):
             super().__init__()
             
             # Copy all layers from original model
@@ -15,7 +15,7 @@ def make_onnx_compatible_model(original_model):
             
             # Replace adaptive pooling with fixed operations
             self.global_avg_pool = nn.AdaptiveAvgPool1d(1)  # This should work in ONNX
-            self.feature_expand = nn.Linear(64, 128)  # Expand to 128 features
+            self.feature_expand = nn.Linear(64, 128).to(device)  # Ensure on correct device
             
             self.feature_projection = original_model.feature_projection
             self.positional_encoding = original_model.positional_encoding
@@ -58,7 +58,7 @@ def make_onnx_compatible_model(original_model):
             
             return detection_prob
     
-    return ONNXComplexDetectionModel(original_model)
+    return ONNXComplexDetectionModel(original_model, device)
 
 def export_model_to_onnx(model_path, onnx_model_path, signal_length=320):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -77,7 +77,8 @@ def export_model_to_onnx(model_path, onnx_model_path, signal_length=320):
         print("Loaded checkpoint directly")
     
     # Create ONNX-compatible version
-    onnx_model = make_onnx_compatible_model(original_model)
+    onnx_model = make_onnx_compatible_model(original_model, device)
+    onnx_model.to(device)  # Ensure entire model is on device
     onnx_model.eval()
     
     # Initialize the new linear layer with reasonable weights
