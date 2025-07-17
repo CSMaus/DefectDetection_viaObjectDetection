@@ -1,4 +1,9 @@
 from detection_models.complex_detection_model import ComplexDetectionModel
+from detection_models.complex_onnx import ComplexDetectionModelONNX
+# from detection_models.complex_fix import ComplexDetectionModelFix
+from detection_models.noise_robust_tr2 import NoiseRobustDetectionModel
+
+
 import torch
 
 def export_original_model_to_onnx(model_path, onnx_model_path, signal_length=320):
@@ -8,8 +13,11 @@ def export_original_model_to_onnx(model_path, onnx_model_path, signal_length=320
     print(f"Using device: {device}")
     
     # Load original model exactly as trained
-    model = ComplexDetectionModel(signal_length=signal_length).to(device)
-    
+    # model = ComplexDetectionModel(signal_length=signal_length).to(device)
+    # model = ComplexDetectionModelFix(signal_length=signal_length).to(device)
+    # model = ComplexDetectionModelFix(signal_length=signal_length).to(device)
+    model = NoiseRobustDetectionModel(signal_length=signal_length).to(device)
+
     # Load checkpoint
     checkpoint = torch.load(model_path, map_location=device)
     if 'model_state_dict' in checkpoint:
@@ -70,9 +78,11 @@ def export_original_model_to_onnx(model_path, onnx_model_path, signal_length=320
     return None
 
 # Main execution
-modelname = "ComplexDetectionModel"
-attempt = "002"
-model_path = f'models/Complex_20250717_0800/best_complex_detection.pth'
+# modelname = "ComplexDetectionModel"
+modelname = "NoiseRobust"
+attempt = "0004"
+# model_path = f'models/ComplexONNX_20250717_1746/best_complexonnx_detection.pth'
+model_path = f'models/NoiseRobust_20250717_1838/best_noiserobust_detection.pth'
 
 successful_export = export_original_model_to_onnx(
     model_path, 
