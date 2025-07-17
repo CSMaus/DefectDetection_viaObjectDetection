@@ -11,6 +11,7 @@ from detection_models.simple_detection_model import SimpleDetectionModel
 from detection_models.complex_detection_model import ComplexDetectionModel
 from detection_models.complex_onnx import ComplexDetectionModelONNX
 from detection_models.complex_fix import ComplexDetectionModelFix
+from detection_models.noise_robust_tr2 import NoiseRobustDetectionModel
 from defect_focused_dataset import get_defect_focused_dataloader
 
 
@@ -235,7 +236,8 @@ def main():
     
     models = {
         # "ComplexONNX": ComplexDetectionModelONNX(signal_length=320)
-        "ComplexFix": ComplexDetectionModelFix(signal_length=320)
+        # "ComplexFix": ComplexDetectionModelFix(signal_length=320)
+        "NoiseRobust": NoiseRobustDetectionModel(signal_length=320)
     }
     
     results = {}
@@ -252,7 +254,7 @@ def main():
         
         best_acc, history = train_detection_model(
             model, train_loader, val_loader, 
-            num_epochs=25, device=device, model_name=name, save_dir=main_models_dir
+            num_epochs=20, device=device, model_name=name, save_dir=main_models_dir
         )
         
         results[name] = best_acc
