@@ -258,7 +258,7 @@ def main():
     # Load test data
     print("Loading test data...")
     train_loader, val_loader = get_defect_focused_dataloader(
-        "json_data_0717",
+        "json_data_0716",
         batch_size=16, 
         seq_length=50,
         shuffle=False,  # Don't shuffle for consistent testing
@@ -269,13 +269,11 @@ def main():
     # Use validation loader as test loader
     test_loader = val_loader
     
-    # Define models to test
     models_to_test = {
-        "Simple": SimpleDetectionModel(signal_length=320),
         "Complex": ComplexDetectionModel(signal_length=320)
     }
     
-    models_dir = "models"
+    models_dir = "models/"
     all_results = {}
     
     for model_name, model in models_to_test.items():
@@ -283,16 +281,11 @@ def main():
         print(f"Testing {model_name} Detection Model")
         print(f"{'='*60}")
         
-        # Find best checkpoint
-        checkpoint_path = find_best_model_checkpoint(models_dir, model_name)
-        
-        if checkpoint_path is None:
-            print(f"No checkpoint found for {model_name} model. Skipping...")
-            continue
+        checkpoint_path = os.path.join(models_dir, "best_complex_detection.pth")
+
         
         print(f"Loading checkpoint: {checkpoint_path}")
         
-        # Load model
         model = model.to(device)
         model = load_model_checkpoint(checkpoint_path, model, device)
         
