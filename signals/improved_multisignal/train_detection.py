@@ -4,8 +4,8 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 from tqdm import tqdm
 from datetime import datetime
 
-from simple_detection_model import SimpleDetectionModel
-from complex_detection_model import ComplexDetectionModel
+from detection_models.simple_detection_model import SimpleDetectionModel
+from detection_models.complex_detection_model import ComplexDetectionModel
 from defect_focused_dataset import get_defect_focused_dataloader
 
 
@@ -76,7 +76,7 @@ def train_detection_model(model, train_loader, val_loader, num_epochs, device, m
         
         if val_accuracy > best_accuracy:
             best_accuracy = val_accuracy
-            torch.save(model.state_dict(), f"best_{model_name.lower()}_detection.pth")
+            torch.save(model.state_dict(), f"models/{model_name}/best_{model_name.lower()}_detection.pth")
             print(f"  New best accuracy: {val_accuracy:.4f}!")
         
         print()
@@ -90,9 +90,9 @@ def main():
     
     # Load data
     train_loader, val_loader = get_defect_focused_dataloader(
-        "json_data_07/", 
+        "json_data_0717", # "json_data_0716/",
         batch_size=16, 
-        seq_length=30,
+        seq_length=50,  # 30,
         shuffle=True,
         validation_split=0.2,
         min_defects_per_sequence=1
@@ -100,7 +100,7 @@ def main():
     
     # Test both models
     models = {
-        "Simple": SimpleDetectionModel(signal_length=320),
+        # "Simple": SimpleDetectionModel(signal_length=320),
         "Complex": ComplexDetectionModel(signal_length=320)
     }
     
