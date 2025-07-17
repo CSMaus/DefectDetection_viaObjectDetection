@@ -8,7 +8,7 @@ class DirectDefectModel(nn.Module):
     Enhanced direct defect detection using sequence context
     Better transformer capacity and feature extraction for fluctuation invariance
     """
-    def __init__(self, signal_length=320, d_model=128, num_heads=16, num_layers=6, dropout=0.1):
+    def __init__(self, signal_length=320, d_model=128, num_heads=16, num_layers=4, dropout=0.05):
         super(DirectDefectModel, self).__init__()
         
         # ENHANCED FEATURE EXTRACTION - better pattern capture despite fluctuations

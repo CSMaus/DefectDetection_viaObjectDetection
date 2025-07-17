@@ -98,7 +98,7 @@ def train_detection_model(model, train_loader, val_loader, num_epochs, device, m
     model_save_dir = os.path.join(save_dir, f"{model_name}_{timestamp}")
     os.makedirs(model_save_dir, exist_ok=True)
     
-    optimizer = torch.optim.AdamW(model.parameters(), lr=0.0008, weight_decay=0.01)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=0.0008, weight_decay=0.015)
     scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.7, patience=3)
     criterion = nn.BCELoss()
     
@@ -132,7 +132,7 @@ def train_detection_model(model, train_loader, val_loader, num_epochs, device, m
             # Backward pass
             optimizer.zero_grad()
             loss.backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1)  # reduced gradient clipping
             optimizer.step()
             
             # Statistics
@@ -230,7 +230,7 @@ def main():
     
     # Load data
     train_loader, val_loader = get_defect_focused_dataloader(
-        "json_data_0717", # "json_data_0716/",
+        "json_data_0717", # "json_data_0716/",  # "json_data_all"
         batch_size=8,
         seq_length=50,  # 30,
         shuffle=True,
@@ -244,7 +244,11 @@ def main():
         # "NoiseRobust": NoiseRobustDetectionModel(signal_length=320)
         # "PatternEmbedding": PatternEmbeddingModel(signal_length=320)
         # "EnhancedPattern": EnhancedPatternModel(signal_length=320)
-        "DirectDefectModel": DirectDefectModel(signal_length=320)
+        "DirectDefectModel": DirectDefectModel(signal_length=320,
+                                               d_model=64,
+                                               num_heads=16,
+                                               num_layers=4,
+                                               dropout=0.5)
     }
     
     results = {}
@@ -261,7 +265,7 @@ def main():
         
         best_acc, history = train_detection_model(
             model, train_loader, val_loader, 
-            num_epochs=20, device=device, model_name=name, save_dir=main_models_dir
+            num_epochs=15, device=device, model_name=name, save_dir=main_models_dir
         )
         
         results[name] = best_acc
