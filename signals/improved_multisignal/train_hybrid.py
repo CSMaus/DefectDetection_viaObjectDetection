@@ -88,11 +88,17 @@ def train_hybrid_model(model, train_loader, val_loader, optimizer, scheduler, nu
     
     for epoch in range(num_epochs):
         # Training stages
-        if epoch < 10:
+        if epoch < 5:
+            stage = "detection_only"
+            model.unfreeze_detection_path()
+            model.freeze_position_module()
+            detection_weight = 1.0
+            position_weight = 0.0  # Don't train position yet
+        elif epoch < 15:
             stage = "position_only"
-            model.freeze_detection_path()
+            model.freeze_detection_path()  # Keep proven detection frozen
             model.unfreeze_position_module()
-            detection_weight = 0.0  # Don't train detection
+            detection_weight = 0.0
             position_weight = 1.0
         else:
             stage = "joint_training"
@@ -305,8 +311,9 @@ def main():
     print("Hybrid model training:")
     print("  - Keeps proven detection architecture (97% accuracy)")
     print("  - Adds separate position module")
-    print("  - Stage 1: Train position only (epochs 1-10)")
-    print("  - Stage 2: Fine-tune both (epochs 11-20)")
+    print("  - Stage 1: Train detection only (epochs 1-5)")
+    print("  - Stage 2: Train position only (epochs 6-15)")
+    print("  - Stage 3: Fine-tune both (epochs 16-20)")
     
     train_loader, val_loader = get_defect_focused_dataloader(
         json_dir, 
