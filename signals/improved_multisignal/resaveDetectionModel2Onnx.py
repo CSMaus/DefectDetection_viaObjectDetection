@@ -111,7 +111,7 @@ def export_model_to_onnx(model_path, onnx_model_path, signal_length=320):
 
 # Main execution
 modelname = "ComplexDetectionModel"
-attempt = "001"
+attempt = "000"
 model_path = f'models/Complex_20250717_0800/best_complex_detection.pth'
 
 export_model_to_onnx(model_path, f'models/{attempt}-{modelname}.onnx')
