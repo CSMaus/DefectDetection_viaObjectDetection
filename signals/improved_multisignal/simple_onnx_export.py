@@ -4,6 +4,7 @@ from detection_models.complex_fix import ComplexDetectionModelFix
 from detection_models.noise_robust_tr2 import NoiseRobustDetectionModel
 from detection_models.pattern_embedding import PatternEmbeddingModel
 from detection_models.enhanced_pattern import EnhancedPatternModel
+from detection_models.direct_defect import DirectDefectModel
 
 
 
@@ -21,7 +22,8 @@ def export_original_model_to_onnx(model_path, onnx_model_path, signal_length=320
     # model = ComplexDetectionModelFix(signal_length=signal_length).to(device)
     # model = NoiseRobustDetectionModel(signal_length=signal_length).to(device)
     # model = PatternEmbeddingModel(signal_length=signal_length).to(device)
-    model = EnhancedPatternModel(signal_length=signal_length).to(device)
+    # model = EnhancedPatternModel(signal_length=signal_length).to(device)
+    model = DirectDefectModel(signal_length=signal_length).to(device)
 
     # Load checkpoint
     checkpoint = torch.load(model_path, map_location=device)
@@ -84,11 +86,11 @@ def export_original_model_to_onnx(model_path, onnx_model_path, signal_length=320
 
 # Main execution
 # modelname = "ComplexDetectionModel"
-modelname = "EnhancedPattern"
-attempt = "005"
+modelname = "DirectDefectModel"
+attempt = "006"
 # model_path = f'models/ComplexONNX_20250717_1746/best_complexonnx_detection.pth'
 # model_path = f'models/NoiseRobust_20250717_1838/best_noiserobust_detection.pth'
-model_path = f'models/EnhancedPattern_20250717_2105/best_detection.pth'
+model_path = f'models/DirectDefectModel_20250717_2155/best_detection.pth'
 
 successful_export = export_original_model_to_onnx(
     model_path, 
