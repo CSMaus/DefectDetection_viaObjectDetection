@@ -13,8 +13,9 @@ def make_onnx_compatible_model(original_model):
             # Copy all layers from original model
             self.conv_layers = original_model.conv_layers
             
-            # Replace adaptive pooling with fixed pooling
-            self.fixed_pool = nn.AvgPool1d(kernel_size=2, stride=2)  # Simple fixed pooling
+            # Replace adaptive pooling with fixed operations
+            self.global_avg_pool = nn.AdaptiveAvgPool1d(1)  # This should work in ONNX
+            self.feature_expand = nn.Linear(64, 128)  # Expand to 128 features
             
             self.feature_projection = original_model.feature_projection
             self.positional_encoding = original_model.positional_encoding
@@ -30,20 +31,12 @@ def make_onnx_compatible_model(original_model):
             # Multi-scale feature extraction
             x = self.conv_layers(x)  # (batch * num_signals, 64, signal_length)
             
-            # Fixed pooling instead of adaptive
-            x = self.fixed_pool(x)  # (batch * num_signals, 64, signal_length//2)
+            # Global average pooling to single value per channel
+            x = self.global_avg_pool(x)  # (batch * num_signals, 64, 1)
+            x = x.squeeze(-1)  # (batch * num_signals, 64)
             
-            # Global average pooling to get fixed size
-            x = torch.mean(x, dim=2)  # (batch * num_signals, 64)
-            
-            # Pad or truncate to 128 features
-            if x.size(1) < 128:
-                # Pad with zeros
-                padding = torch.zeros(x.size(0), 128 - x.size(1), device=x.device)
-                x = torch.cat([x, padding], dim=1)
-            else:
-                # Truncate to 128
-                x = x[:, :128]
+            # Expand to 128 features using linear layer
+            x = self.feature_expand(x)  # (batch * num_signals, 128)
             
             # Feature projection
             x = self.feature_projection(x)  # (batch * num_signals, d_model)
@@ -87,6 +80,12 @@ def export_model_to_onnx(model_path, onnx_model_path, signal_length=320):
     onnx_model = make_onnx_compatible_model(original_model)
     onnx_model.eval()
     
+    # Initialize the new linear layer with reasonable weights
+    with torch.no_grad():
+        # Initialize feature_expand layer
+        nn.init.xavier_uniform_(onnx_model.feature_expand.weight)
+        nn.init.zeros_(onnx_model.feature_expand.bias)
+    
     # Create dummy input
     dummy_input = torch.randn(1, 50, signal_length).to(device)
     
@@ -94,6 +93,7 @@ def export_model_to_onnx(model_path, onnx_model_path, signal_length=320):
     with torch.no_grad():
         output = onnx_model(dummy_input)
         print(f"Model output shape: {output.shape}")
+        print(f"Output range: {output.min().item():.4f} to {output.max().item():.4f}")
     
     # Export to ONNX
     torch.onnx.export(
@@ -101,7 +101,7 @@ def export_model_to_onnx(model_path, onnx_model_path, signal_length=320):
         dummy_input,
         onnx_model_path,
         export_params=True,
-        opset_version=11,  # Use lower opset for compatibility
+        opset_version=15,  # Use your opset 15
         input_names=['input'],
         output_names=['detection_prob']
     )
