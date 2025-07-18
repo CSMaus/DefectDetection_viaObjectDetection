@@ -1,4 +1,4 @@
-from hybrid_binary import HybridBinaryModel
+from detection_models.hybrid_binary import HybridBinaryModel
 
 import torch
 import os
@@ -17,7 +17,7 @@ def export_model_to_onnx(model, device, model_path, onnx_model_path, signal_leng
         dummy_input,
         onnx_model_path,
         export_params=True,
-        opset_version=13,
+        opset_version=15,
         input_names=['input'],
         output_names=['defect_prob'],  # Only one output instead of 3
         dynamic_axes={
@@ -46,7 +46,7 @@ model = HybridBinaryModel(
 ).to(device)
 
 modelname = "HybridBinaryModel"
-attempt = "001"
-model_path = f'models/HybridBinary_20250717_0800/best_hybrid_binary.pth'  # UPDATE THIS PATH
+attempt = "000"
+model_path = f'models/HybridBinaryModel_20250718_1521/best_detection.pth'  # UPDATE THIS PATH
 export_model_to_onnx(model, device, model_path,
                      f'models/{attempt}-{modelname}.onnx', signal_length, hidden_sizes, num_heads)

@@ -130,8 +130,8 @@ class HybridBinaryModel(nn.Module):
         
         # Ensure exactly 128 features
         current_size = x.size(2)
-        if current_size != 128:
-            x = F.interpolate(x, size=128, mode='linear', align_corners=False)
+        # if current_size != 128:
+        x = F.interpolate(x, size=128, mode='linear', align_corners=False)
         
         # Global average pooling
         x = x.mean(dim=1)  # (batch * num_signals, 128)
