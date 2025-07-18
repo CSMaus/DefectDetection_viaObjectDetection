@@ -257,42 +257,84 @@ def main():
     main_models_dir = "models"
     os.makedirs(main_models_dir, exist_ok=True)
     
-    # BALANCED DATA LOADING - include both defective and clean sequences
-    print("Loading BALANCED data (defective + clean sequences)...")
-    
-    # Load sequences with defects
+    # STEP 1: Load defective sequences to see how many we have
+    print("Loading defective sequences...")
     train_loader_defects, val_loader_defects = get_defect_focused_dataloader(
         "json_data_0717",
-        batch_size=4,  # Half batch size since we'll combine
+        batch_size=8,
         seq_length=50,
         shuffle=True,
         validation_split=0.2,
-        min_defects_per_sequence=1  # Only defective sequences
+        min_defects_per_sequence=1
     )
     
-    # Load sequences without defects (clean sequences)
-    train_loader_clean, val_loader_clean = get_defect_focused_dataloader(
-        "json_data_0717",
-        batch_size=4,  # Half batch size since we'll combine
-        seq_length=50,
-        shuffle=True,
-        validation_split=0.2,
-        min_defects_per_sequence=0,  # Only clean sequences
-        max_defects_per_sequence=0   # Ensure no defects
-    )
+    num_defective = len(train_loader_defects.dataset) + len(val_loader_defects.dataset)
+    print(f"Found {num_defective} defective sequences")
     
-    print(f"Defective sequences - Train batches: {len(train_loader_defects)}, Val batches: {len(val_loader_defects)}")
-    print(f"Clean sequences - Train batches: {len(train_loader_clean)}, Val batches: {len(val_loader_clean)}")
+    # STEP 2: Manually load and filter clean sequences to match defective count
+    print(f"Now selecting {num_defective} clean sequences for 1:1 ratio...")
     
-    # Create balanced loaders that combine both
-    from torch.utils.data import DataLoader
+    from defect_focused_dataset import DefectFocusedDataset
+    import random
     
-    # Combine datasets
-    train_combined_dataset = CombinedDataset(train_loader_defects.dataset, train_loader_clean.dataset)
-    val_combined_dataset = CombinedDataset(val_loader_defects.dataset, val_loader_clean.dataset)
+    # Create dataset that loads ALL sequences (including clean ones)
+    full_dataset = DefectFocusedDataset("json_data_0717", seq_length=50, min_defects_per_sequence=0)
     
-    train_loader = DataLoader(train_combined_dataset, batch_size=8, shuffle=True)
-    val_loader = DataLoader(val_combined_dataset, batch_size=8, shuffle=False)
+    # Manually separate defective and clean sequences
+    defective_sequences = []
+    clean_sequences = []
+    
+    for i in range(len(full_dataset)):
+        signals, labels, positions = full_dataset[i]
+        if labels.sum() > 0:  # Has defects
+            defective_sequences.append((signals, labels, positions))
+        else:  # Clean sequence
+            clean_sequences.append((signals, labels, positions))
+    
+    print(f"Total sequences: {len(full_dataset)}")
+    print(f"Defective sequences: {len(defective_sequences)}")
+    print(f"Clean sequences: {len(clean_sequences)}")
+    
+    # STEP 3: Select exactly the same number of clean sequences as defective
+    num_to_select = len(defective_sequences)
+    if len(clean_sequences) >= num_to_select:
+        # Randomly select clean sequences to match defective count
+        random.shuffle(clean_sequences)
+        selected_clean = clean_sequences[:num_to_select]
+        print(f"Selected {len(selected_clean)} clean sequences to match {num_to_select} defective sequences")
+        
+        # STEP 4: Combine for balanced dataset
+        balanced_data = defective_sequences + selected_clean
+        random.shuffle(balanced_data)  # Shuffle the combined data
+        
+        print(f"BALANCED DATASET: {len(balanced_data)} total sequences (1:1 ratio)")
+        print(f"Defective: {len(defective_sequences)}, Clean: {len(selected_clean)}")
+        
+        # Create balanced dataloaders
+        from torch.utils.data import TensorDataset, DataLoader
+        
+        # Convert to tensors
+        all_signals = torch.stack([item[0] for item in balanced_data])
+        all_labels = torch.stack([item[1] for item in balanced_data])
+        all_positions = torch.stack([item[2] for item in balanced_data])
+        
+        # Create dataset and split
+        balanced_dataset = TensorDataset(all_signals, all_labels, all_positions)
+        
+        # Split into train/val (80/20)
+        train_size = int(0.8 * len(balanced_dataset))
+        val_size = len(balanced_dataset) - train_size
+        
+        train_dataset, val_dataset = torch.utils.data.random_split(balanced_dataset, [train_size, val_size])
+        
+        train_loader = DataLoader(train_dataset, batch_size=8, shuffle=True)
+        val_loader = DataLoader(val_dataset, batch_size=8, shuffle=False)
+        
+        print(f"Final balanced loaders: Train={len(train_loader.dataset)}, Val={len(val_loader.dataset)}")
+        
+    else:
+        print(f"ERROR: Not enough clean sequences! Need {num_to_select}, but only have {len(clean_sequences)}")
+        return
     
     models = {
         # "ComplexONNX": ComplexDetectionModelONNX(signal_length=320)
