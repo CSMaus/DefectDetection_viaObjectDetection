@@ -16,7 +16,6 @@ from detection_models.noise_robust_tr2 import NoiseRobustDetectionModel
 from detection_models.pattern_embedding import PatternEmbeddingModel
 from detection_models.enhanced_pattern import EnhancedPatternModel
 from detection_models.direct_defect import DirectDefectModel
-from detection_models.hybrid_binary import HybridBinaryModel
 
 from defect_focused_dataset import get_defect_focused_dataloader
 
@@ -275,8 +274,11 @@ def main():
         # "NoiseRobust": NoiseRobustDetectionModel(signal_length=320)
         # "PatternEmbedding": PatternEmbeddingModel(signal_length=320)
         # "EnhancedPattern": EnhancedPatternModel(signal_length=320)
-        # "DirectDefectModel": DirectDefectModel(signal_length=320, d_model=64, num_heads=16, num_layers=4,)dropout=0.5
-        "HybridBinaryModel": HybridBinaryModel(signal_length=320)
+        "DirectDefectModel": DirectDefectModel(signal_length=320,
+                                               d_model=64,
+                                               num_heads=16,
+                                               num_layers=4,
+                                               dropout=0.5)
     }
     
     results = {}
@@ -306,6 +308,7 @@ def main():
     for name, acc in results.items():
         print(f"{name} Detection Model: {acc:.4f}")
     
+    # Save combined results
     timestamp = datetime.now().strftime("%Y%m%d_%H%M")
     combined_results = {
         'timestamp': timestamp,
