@@ -232,7 +232,7 @@ def main():
 
     # Load data
     train_loader, val_loader = get_defect_focused_dataloader(
-        "json_data_0717",  # "json_data_0716/",  # "json_data_all"
+        "json_data_0718",  # "json_data_0717",  # "json_data_0716/",  # "json_data_all"
         batch_size=8,
         seq_length=50,  # 30,
         shuffle=True,
@@ -246,8 +246,8 @@ def main():
         # "NoiseRobust": NoiseRobustDetectionModel(signal_length=320)
         # "PatternEmbedding": PatternEmbeddingModel(signal_length=320)
         # "EnhancedPattern": EnhancedPatternModel(signal_length=320)
-        "DirectDefectModel": DirectDefectModel(signal_length=320, d_model=64, num_heads=8, num_layers=4, dropout=0.5)
-        # "HybridBinaryModel": HybridBinaryModel(signal_length=320)
+        # "DirectDefectModel": DirectDefectModel(signal_length=320, d_model=64, num_heads=8, num_layers=4, dropout=0.5)
+        "HybridBinaryModel": HybridBinaryModel(signal_length=320)
 
     }
 
