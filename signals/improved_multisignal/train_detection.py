@@ -271,31 +271,121 @@ def main():
     num_defective = len(train_loader_defects.dataset) + len(val_loader_defects.dataset)
     print(f"Found {num_defective} defective sequences")
     
-    # STEP 2: Manually load and filter clean sequences to match defective count
-    print(f"Now selecting {num_defective} clean sequences for 1:1 ratio...")
+    # STEP 2: Create a custom dataset that loads ALL sequences (including clean ones)
+    print(f"Now manually loading ALL sequences to select {num_defective} clean sequences for 1:1 ratio...")
     
-    from defect_focused_dataset import DefectFocusedDataset
+    from defect_focused_dataset import DefectFocusedJsonSignalDataset
     import random
     
-    # Create dataset that loads ALL sequences (including clean ones)
-    full_dataset = DefectFocusedDataset("json_data_0717", seq_length=50, min_defects_per_sequence=0)
+    # Create a modified version that loads ALL sequences by setting min_defects=0
+    # But we need to manually modify the filtering logic
     
-    # Manually separate defective and clean sequences
+    class AllSequencesDataset(DefectFocusedJsonSignalDataset):
+        """Modified dataset that loads ALL sequences, not just defective ones"""
+        def _load_defect_sequences(self):
+            """Override to load ALL sequences, both defective and clean"""
+            total_sequences_created = 0
+            total_sequences_with_defects = 0
+            total_sequences_without_defects = 0
+            
+            print(f"Found {len(self.json_files)} JSON files in {self.json_dir}")
+            
+            for json_file in self.json_files:
+                json_path = os.path.join(self.json_dir, json_file)
+                
+                with open(json_path, 'r') as f:
+                    data = json.load(f)
+                
+                for beam_key in data.keys():
+                    beam_data = data[beam_key]
+                    
+                    # Sort scan keys by index
+                    scans_keys_sorted = sorted(beam_data.keys(), key=lambda x: int(x.split('_')[0]))
+                    
+                    # Skip if not enough scans for a full sequence
+                    if len(scans_keys_sorted) < self.seq_length:
+                        continue
+                    
+                    # Extract all signals, labels, and defect positions for this beam
+                    all_scans_for_beam = {}
+                    all_lbls_for_beam = {}
+                    all_defects_for_beam = {}
+                    
+                    scan_idx = 0
+                    for scan_key in scans_keys_sorted:
+                        scan_data = beam_data[scan_key]
+                        all_scans_for_beam[str(scan_idx)] = scan_data
+                        
+                        # Extract label and defect position
+                        if scan_key.split('_')[1] == "Health":
+                            all_lbls_for_beam[str(scan_idx)] = 0
+                            all_defects_for_beam[str(scan_idx)] = [None, None]
+                        else:
+                            all_lbls_for_beam[str(scan_idx)] = 1
+                            try:
+                                defect_range = scan_key.split('_')[2].split('-')
+                                defect_start, defect_end = float(defect_range[0]), float(defect_range[1])
+                                all_defects_for_beam[str(scan_idx)] = [defect_start, defect_end]
+                            except:
+                                all_defects_for_beam[str(scan_idx)] = [0.0, 1.0]
+                        
+                        scan_idx += 1
+                    
+                    # Create sequences from this beam
+                    for start_idx in range(len(scans_keys_sorted) - self.seq_length + 1):
+                        seq_signals = []
+                        seq_labels = []
+                        seq_positions = []
+                        
+                        for i in range(self.seq_length):
+                            signal_idx = str(start_idx + i)
+                            seq_signals.append(all_scans_for_beam[signal_idx])
+                            seq_labels.append(all_lbls_for_beam[signal_idx])
+                            
+                            if all_defects_for_beam[signal_idx][0] is not None:
+                                seq_positions.append(all_defects_for_beam[signal_idx])
+                            else:
+                                seq_positions.append([0.0, 0.0])
+                        
+                        # LOAD ALL SEQUENCES - both defective and clean
+                        defect_count = sum(seq_labels)
+                        total_sequences_created += 1
+                        
+                        if defect_count > 0:
+                            total_sequences_with_defects += 1
+                        else:
+                            total_sequences_without_defects += 1
+                        
+                        # Convert to tensors
+                        signal_tensor = torch.tensor(seq_signals, dtype=torch.float32)
+                        label_tensor = torch.tensor(seq_labels, dtype=torch.float32)
+                        position_tensor = torch.tensor(seq_positions, dtype=torch.float32)
+                        
+                        self.signal_sets.append(signal_tensor)
+                        self.labels.append(label_tensor)
+                        self.defect_positions.append(position_tensor)
+            
+            print(f"Total sequences created: {total_sequences_created}")
+            print(f"Sequences with defects: {total_sequences_with_defects}")
+            print(f"Sequences without defects: {total_sequences_without_defects}")
+    
+    # Load ALL sequences
+    all_dataset = AllSequencesDataset("json_data_0717", seq_length=50, min_defects_per_sequence=0)
+    
+    # Separate defective and clean sequences
     defective_sequences = []
     clean_sequences = []
     
-    for i in range(len(full_dataset)):
-        signals, labels, positions = full_dataset[i]
+    for i in range(len(all_dataset)):
+        signals, labels, positions = all_dataset[i]
         if labels.sum() > 0:  # Has defects
             defective_sequences.append((signals, labels, positions))
         else:  # Clean sequence
             clean_sequences.append((signals, labels, positions))
     
-    print(f"Total sequences: {len(full_dataset)}")
-    print(f"Defective sequences: {len(defective_sequences)}")
-    print(f"Clean sequences: {len(clean_sequences)}")
+    print(f"Separated: {len(defective_sequences)} defective, {len(clean_sequences)} clean")
     
-    # STEP 3: Select exactly the same number of clean sequences as defective
+    # Select exactly the same number of clean sequences as defective
     num_to_select = len(defective_sequences)
     if len(clean_sequences) >= num_to_select:
         # Randomly select clean sequences to match defective count
@@ -303,12 +393,11 @@ def main():
         selected_clean = clean_sequences[:num_to_select]
         print(f"Selected {len(selected_clean)} clean sequences to match {num_to_select} defective sequences")
         
-        # STEP 4: Combine for balanced dataset
+        # Combine for balanced dataset
         balanced_data = defective_sequences + selected_clean
         random.shuffle(balanced_data)  # Shuffle the combined data
         
         print(f"BALANCED DATASET: {len(balanced_data)} total sequences (1:1 ratio)")
-        print(f"Defective: {len(defective_sequences)}, Clean: {len(selected_clean)}")
         
         # Create balanced dataloaders
         from torch.utils.data import TensorDataset, DataLoader
