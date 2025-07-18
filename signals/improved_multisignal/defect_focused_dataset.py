@@ -33,11 +33,11 @@ class DefectFocusedJsonSignalDataset(Dataset):
         total_beams = 0
         total_sequences = 0
         total_sequences_with_defects = 0
+        total_sequences_nodefects_added = 0
         total_sequences_skipped = 0
         
         print(f"Found {len(self.json_files)} JSON files in {self.json_dir}")
         
-        # Process each JSON file
         for json_file in self.json_files:
             file_path = os.path.join(self.json_dir, json_file)
             
@@ -45,19 +45,15 @@ class DefectFocusedJsonSignalDataset(Dataset):
                 with open(file_path, 'r') as f:
                     data = json.load(f)
                 
-                # Process each beam
                 for beam_key in data.keys():
                     beam_data = data[beam_key]
                     total_beams += 1
                     
-                    # Sort scan keys by index
                     scans_keys_sorted = sorted(beam_data.keys(), key=lambda x: int(x.split('_')[0]))
                     
-                    # Skip if not enough scans for a full sequence
                     if len(scans_keys_sorted) < self.seq_length:
                         continue
                     
-                    # Extract all signals, labels, and defect positions for this beam
                     all_scans_for_beam = {}
                     all_lbls_for_beam = {}
                     all_defects_for_beam = {}
@@ -67,7 +63,6 @@ class DefectFocusedJsonSignalDataset(Dataset):
                         scan_data = beam_data[scan_key]
                         all_scans_for_beam[str(scan_idx)] = scan_data
                         
-                        # Extract label and defect position
                         if scan_key.split('_')[1] == "Health":
                             all_lbls_for_beam[str(scan_idx)] = 0
                             all_defects_for_beam[str(scan_idx)] = [None, None]
@@ -82,7 +77,6 @@ class DefectFocusedJsonSignalDataset(Dataset):
                         
                         scan_idx += 1
                     
-                    # Create sequences from this beam
                     num_of_seqs_for_beam = math.ceil(len(scans_keys_sorted) / self.seq_length)
                     
                     for i in range(num_of_seqs_for_beam):
@@ -101,12 +95,10 @@ class DefectFocusedJsonSignalDataset(Dataset):
                         if start_idx < 0:
                             continue
                         
-                        # Extract signals for this sequence
                         for j in range(start_idx, end_idx):
                             try:
                                 scan_data = all_scans_for_beam[str(j)]
                                 
-                                # Convert scan data to numpy array
                                 if isinstance(scan_data, list):
                                     signal = np.array(scan_data, dtype=np.float32)
                                 elif isinstance(scan_data, dict) and 'signal' in scan_data:
@@ -121,11 +113,9 @@ class DefectFocusedJsonSignalDataset(Dataset):
                                 print(f"Error processing scan {j} in beam {beam_key}: {e}")
                                 continue
                         
-                        # Skip if sequence doesn't have exactly seq_length signals
                         if len(sequence) != self.seq_length:
                             continue
                         
-                        # Ensure all signals have the same length
                         signal_length = len(sequence[0])
                         valid = True
                         for signal in sequence:
@@ -140,11 +130,14 @@ class DefectFocusedJsonSignalDataset(Dataset):
                         
                         # *** KEY CHANGE: Only include sequences with defects ***
                         defect_count = sum(seq_labels)
+                        no_defects_in_seq = False
                         if defect_count < self.min_defects_per_sequence:
-                            total_sequences_skipped += 1
-                            continue  # Skip sequences without enough defects
+                            no_defects_in_seq = True
+                            if total_sequences_nodefects_added >= total_sequences_with_defects:
+                                total_sequences_skipped += 1
+                                continue  # Skip sequences without enough defects
+
                         
-                        # Format defects
                         formatted_defects = []
                         for defect in seq_defects:
                             if defect[0] is None:
@@ -152,11 +145,13 @@ class DefectFocusedJsonSignalDataset(Dataset):
                             else:
                                 formatted_defects.append([float(defect[0]), float(defect[1])])
                         
-                        # Add to dataset (only sequences with defects)
                         self.signal_sets.append(np.array(sequence, dtype=np.float32))
                         self.labels.append(np.array(seq_labels, dtype=np.float32))
                         self.defect_positions.append(np.array(formatted_defects, dtype=np.float32))
-                        total_sequences_with_defects += 1
+                        if no_defects_in_seq:
+                            total_sequences_nodefects_added += 1
+                        else:
+                             total_sequences_with_defects += 1
             
             except Exception as e:
                 print(f"Error loading {json_file}: {e}")
@@ -164,6 +159,7 @@ class DefectFocusedJsonSignalDataset(Dataset):
         print(f"Total beams: {total_beams}")
         print(f"Total sequences created: {total_sequences}")
         print(f"Sequences with defects (kept): {total_sequences_with_defects}")
+        print(f"Sequences without defects (kept): {total_sequences_nodefects_added}")
         print(f"Sequences without defects (skipped): {total_sequences_skipped}")
         print(f"Defect sequence ratio: {total_sequences_with_defects/total_sequences:.3f}")
     
