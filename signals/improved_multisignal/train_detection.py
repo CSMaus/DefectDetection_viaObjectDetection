@@ -3,6 +3,7 @@ import json
 import torch
 import torch.nn as nn
 from torch.optim.lr_scheduler import ReduceLROnPlateau
+from torch.utils.data import Dataset, DataLoader
 from tqdm import tqdm
 from datetime import datetime
 import matplotlib.pyplot as plt
@@ -18,6 +19,33 @@ from detection_models.direct_defect import DirectDefectModel
 from detection_models.hybrid_binary import HybridBinaryModel
 
 from defect_focused_dataset import get_defect_focused_dataloader
+
+
+class CombinedDataset(Dataset):
+    """Combines defective and clean sequences for balanced training"""
+    def __init__(self, defective_dataset, clean_dataset):
+        self.defective_dataset = defective_dataset
+        self.clean_dataset = clean_dataset
+        self.defective_len = len(defective_dataset)
+        self.clean_len = len(clean_dataset)
+        
+        # Balance the datasets - use minimum length to ensure equal representation
+        self.min_len = min(self.defective_len, self.clean_len)
+        self.total_len = self.min_len * 2  # Equal amounts of each
+        
+        print(f"Balanced dataset: {self.min_len} defective + {self.min_len} clean = {self.total_len} total")
+    
+    def __len__(self):
+        return self.total_len
+    
+    def __getitem__(self, idx):
+        if idx < self.min_len:
+            # First half: defective sequences
+            return self.defective_dataset[idx % self.defective_len]
+        else:
+            # Second half: clean sequences  
+            clean_idx = (idx - self.min_len) % self.clean_len
+            return self.clean_dataset[clean_idx]
 
 
 def plot_training_history(history, save_path=None):
@@ -229,15 +257,42 @@ def main():
     main_models_dir = "models"
     os.makedirs(main_models_dir, exist_ok=True)
     
-    # Load data
-    train_loader, val_loader = get_defect_focused_dataloader(
-        "json_data_0717", # "json_data_0716/",  # "json_data_all"
-        batch_size=8,
-        seq_length=50,  # 30,
+    # BALANCED DATA LOADING - include both defective and clean sequences
+    print("Loading BALANCED data (defective + clean sequences)...")
+    
+    # Load sequences with defects
+    train_loader_defects, val_loader_defects = get_defect_focused_dataloader(
+        "json_data_0717",
+        batch_size=4,  # Half batch size since we'll combine
+        seq_length=50,
         shuffle=True,
         validation_split=0.2,
-        min_defects_per_sequence=1
+        min_defects_per_sequence=1  # Only defective sequences
     )
+    
+    # Load sequences without defects (clean sequences)
+    train_loader_clean, val_loader_clean = get_defect_focused_dataloader(
+        "json_data_0717",
+        batch_size=4,  # Half batch size since we'll combine
+        seq_length=50,
+        shuffle=True,
+        validation_split=0.2,
+        min_defects_per_sequence=0,  # Only clean sequences
+        max_defects_per_sequence=0   # Ensure no defects
+    )
+    
+    print(f"Defective sequences - Train batches: {len(train_loader_defects)}, Val batches: {len(val_loader_defects)}")
+    print(f"Clean sequences - Train batches: {len(train_loader_clean)}, Val batches: {len(val_loader_clean)}")
+    
+    # Create balanced loaders that combine both
+    from torch.utils.data import DataLoader
+    
+    # Combine datasets
+    train_combined_dataset = CombinedDataset(train_loader_defects.dataset, train_loader_clean.dataset)
+    val_combined_dataset = CombinedDataset(val_loader_defects.dataset, val_loader_clean.dataset)
+    
+    train_loader = DataLoader(train_combined_dataset, batch_size=8, shuffle=True)
+    val_loader = DataLoader(val_combined_dataset, batch_size=8, shuffle=False)
     
     models = {
         # "ComplexONNX": ComplexDetectionModelONNX(signal_length=320)
