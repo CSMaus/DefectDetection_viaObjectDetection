@@ -48,6 +48,6 @@ model = PositionLocalizationModel(
 
 modelname = "PositionLocalizationModel"
 attempt = "001"
-model_path = f'models/PositionLocalization_20250718_0800/best_position_model.pth'
+model_path = f'models/PositionLocalization_20250720_1220/best_position_model.pth'
 export_model_to_onnx(model, device, model_path,
                      f'models/{attempt}-{modelname}.onnx', signal_length, d_model, num_heads)

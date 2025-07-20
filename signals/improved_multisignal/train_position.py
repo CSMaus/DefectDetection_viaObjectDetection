@@ -218,7 +218,7 @@ def train_position_model(model, train_loader, val_loader, num_epochs, device, mo
         
         if val_loss < best_loss:
             best_loss = val_loss
-            best_model_path = os.path.join(model_save_dir, f"best_position_model.pth")
+            best_model_path = os.path.join(model_save_dir, f"best_model.pth")
             torch.save(checkpoint, best_model_path)
             print(f"  New best loss: {val_loss:.4f}! Saved to {best_model_path}")
         
