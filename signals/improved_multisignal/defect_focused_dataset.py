@@ -12,11 +12,12 @@ class DefectFocusedJsonSignalDataset(Dataset):
     ONLY includes sequences that contain at least one defect.
     This focuses training on defect localization rather than detection.
     """
-    def __init__(self, json_dir, seq_length=50, min_defects_per_sequence=1):
+    def __init__(self, json_dir, seq_length=50, min_defects_per_sequence=1, isOnlyDefective=False):
         self.json_dir = json_dir
         self.json_files = [f for f in os.listdir(json_dir) if f.endswith('.json')]
         self.seq_length = seq_length
         self.min_defects_per_sequence = min_defects_per_sequence
+        self.isOnlyDefective = isOnlyDefective
         self.signal_sets = []
         self.labels = []
         self.defect_positions = []
@@ -133,9 +134,9 @@ class DefectFocusedJsonSignalDataset(Dataset):
                         no_defects_in_seq = False
                         if defect_count < self.min_defects_per_sequence:
                             no_defects_in_seq = True
-                            if total_sequences_nodefects_added >= total_sequences_with_defects:
+                            if total_sequences_nodefects_added >= total_sequences_with_defects or self.isOnlyDefective:
                                 total_sequences_skipped += 1
-                                continue  # Skip sequences without enough defects
+                                continue
 
                         
                         formatted_defects = []
@@ -173,7 +174,8 @@ class DefectFocusedJsonSignalDataset(Dataset):
         return signals, labels, defect_positions
 
 
-def get_defect_focused_dataloader(json_dir, batch_size=4, seq_length=50, shuffle=True, num_workers=4, validation_split=0.2, min_defects_per_sequence=1):
+def get_defect_focused_dataloader(json_dir, batch_size=4, seq_length=50, shuffle=True, num_workers=4,
+                                  validation_split=0.2, min_defects_per_sequence=1, isOnlyDefective=False):
     """
     Create DataLoaders for training and validation with defect-focused sequences
     
@@ -190,7 +192,7 @@ def get_defect_focused_dataloader(json_dir, batch_size=4, seq_length=50, shuffle
         train_loader, val_loader: DataLoader objects for training and validation
     """
     # Create the defect-focused dataset
-    full_dataset = DefectFocusedJsonSignalDataset(json_dir, seq_length, min_defects_per_sequence)
+    full_dataset = DefectFocusedJsonSignalDataset(json_dir, seq_length, min_defects_per_sequence, isOnlyDefective)
     
     # Calculate sizes for train and validation sets
     dataset_size = len(full_dataset)
