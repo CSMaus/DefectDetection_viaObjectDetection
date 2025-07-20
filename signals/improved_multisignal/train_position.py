@@ -2,6 +2,7 @@ import os
 import json
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import Dataset, DataLoader
 from tqdm import tqdm
@@ -10,6 +11,75 @@ import matplotlib.pyplot as plt
 
 from detection_models.position_localization import PositionLocalizationModel
 from defect_focused_dataset import get_defect_focused_dataloader
+
+
+def enhanced_position_loss(pred_start, pred_end, gt_start, gt_end, mask):
+    """
+    Enhanced position loss with multiple components:
+    1. L1 loss for basic position accuracy
+    2. IoU loss for overlap optimization
+    3. Consistency loss to ensure start < end
+    4. Length preservation loss
+    """
+    if mask.sum() == 0:
+        return torch.tensor(0.0, device=pred_start.device)
+    
+    # Apply mask
+    pred_start_masked = pred_start[mask > 0.5]
+    pred_end_masked = pred_end[mask > 0.5]
+    gt_start_masked = gt_start[mask > 0.5]
+    gt_end_masked = gt_end[mask > 0.5]
+    
+    # 1. Basic L1 loss
+    l1_start = F.l1_loss(pred_start_masked, gt_start_masked)
+    l1_end = F.l1_loss(pred_end_masked, gt_end_masked)
+    l1_loss = (l1_start + l1_end) / 2
+    
+    # 2. IoU loss (maximize overlap)
+    pred_lengths = torch.abs(pred_end_masked - pred_start_masked)
+    gt_lengths = torch.abs(gt_end_masked - gt_start_masked)
+    
+    overlap_starts = torch.maximum(pred_start_masked, gt_start_masked)
+    overlap_ends = torch.minimum(pred_end_masked, gt_end_masked)
+    overlaps = torch.clamp(overlap_ends - overlap_starts, min=0)
+    
+    unions = pred_lengths + gt_lengths - overlaps
+    ious = overlaps / (unions + 1e-8)
+    iou_loss = 1.0 - ious.mean()  # Maximize IoU
+    
+    # 3. Length preservation loss
+    length_loss = F.l1_loss(pred_lengths, gt_lengths)
+    
+    # 4. Consistency loss (ensure start < end)
+    consistency_loss = F.relu(pred_start_masked - pred_end_masked + 0.01).mean()
+    
+    # Combine losses
+    total_loss = (
+        1.0 * l1_loss +           # Basic position accuracy
+        2.0 * iou_loss +          # Overlap optimization (most important)
+        0.5 * length_loss +       # Length preservation
+        1.0 * consistency_loss    # Consistency constraint
+    )
+    
+    return total_loss
+
+
+def calculate_position_accuracy(pred_start, pred_end, true_start, true_end):
+    """Calculate accuracy based on IoU threshold (more realistic than simple tolerance)"""
+    # Calculate IoU for each prediction
+    pred_lengths = torch.abs(pred_end - pred_start)
+    gt_lengths = torch.abs(true_end - true_start)
+    
+    overlap_starts = torch.maximum(pred_start, true_start)
+    overlap_ends = torch.minimum(pred_end, true_end)
+    overlaps = torch.clamp(overlap_ends - overlap_starts, min=0)
+    
+    unions = pred_lengths + gt_lengths - overlaps
+    ious = overlaps / (unions + 1e-8)
+    
+    # Consider prediction accurate if IoU > 0.5
+    accurate = ious > 0.5
+    return accurate.float().mean().item()
 
 
 def plot_training_history(history, save_path=None):
@@ -113,24 +183,22 @@ def train_position_model(model, train_loader, val_loader, num_epochs, device, mo
                 defective_mask = labels[batch_idx] > 0  # Signals with defects
                 
                 if defective_mask.sum() > 0:  # If there are defective signals
-                    # Get true positions for defective signals
-                    true_start = positions[batch_idx, defective_mask, 0]
-                    true_end = positions[batch_idx, defective_mask, 1]
+                    # Calculate enhanced loss and accuracy
+                    mask = labels[batch_idx]  # Defect mask
+                    loss = enhanced_position_loss(
+                        pred_start[batch_idx], pred_end[batch_idx],
+                        positions[batch_idx, :, 0], positions[batch_idx, :, 1],
+                        mask
+                    )
                     
-                    # Get predicted positions for defective signals
-                    pred_start_defective = pred_start[batch_idx, defective_mask]
-                    pred_end_defective = pred_end[batch_idx, defective_mask]
+                    if mask.sum() > 0:  # Only calculate accuracy if there are defects
+                        accuracy = calculate_position_accuracy(
+                            pred_start[batch_idx, mask > 0.5], pred_end[batch_idx, mask > 0.5],
+                            positions[batch_idx, mask > 0.5, 0], positions[batch_idx, mask > 0.5, 1]
+                        )
+                        batch_accuracy += accuracy
                     
-                    # Calculate MSE loss for start and end positions
-                    start_loss = criterion(pred_start_defective, true_start)
-                    end_loss = criterion(pred_end_defective, true_end)
-                    
-                    # Calculate accuracy
-                    accuracy = calculate_position_accuracy(pred_start_defective, pred_end_defective, 
-                                                         true_start, true_end)
-                    
-                    batch_loss += (start_loss + end_loss)
-                    batch_accuracy += accuracy
+                    batch_loss += loss
                     valid_samples += 1
             
             if valid_samples > 0:
@@ -175,25 +243,23 @@ def train_position_model(model, train_loader, val_loader, num_epochs, device, mo
                     defective_mask = labels[batch_idx] > 0
                     
                     if defective_mask.sum() > 0:
-                        # Get true positions for defective signals
-                        true_start = positions[batch_idx, defective_mask, 0]
-                        true_end = positions[batch_idx, defective_mask, 1]
-                        
-                        # Get predicted positions for defective signals
-                        pred_start_defective = pred_start[batch_idx, defective_mask]
-                        pred_end_defective = pred_end[batch_idx, defective_mask]
-                        
-                        # Calculate MSE loss
-                        start_loss = criterion(pred_start_defective, true_start)
-                        end_loss = criterion(pred_end_defective, true_end)
-                        
-                        # Calculate accuracy
-                        accuracy = calculate_position_accuracy(pred_start_defective, pred_end_defective,
-                                                             true_start, true_end)
-                        
-                        batch_loss += (start_loss + end_loss)
+                    # Calculate enhanced loss and accuracy
+                    mask = labels[batch_idx]  # Defect mask
+                    loss = enhanced_position_loss(
+                        pred_start[batch_idx], pred_end[batch_idx],
+                        positions[batch_idx, :, 0], positions[batch_idx, :, 1],
+                        mask
+                    )
+                    
+                    if mask.sum() > 0:  # Only calculate accuracy if there are defects
+                        accuracy = calculate_position_accuracy(
+                            pred_start[batch_idx, mask > 0.5], pred_end[batch_idx, mask > 0.5],
+                            positions[batch_idx, mask > 0.5, 0], positions[batch_idx, mask > 0.5, 1]
+                        )
                         batch_accuracy += accuracy
-                        valid_samples += 1
+                    
+                    batch_loss += loss
+                    valid_samples += 1
                 
                 if valid_samples > 0:
                     batch_loss = batch_loss / valid_samples
@@ -279,13 +345,13 @@ def main():
         isOnlyDefective=True  # Only defective sequences
     )
     
-    # Create position localization model
+    # Create enhanced position localization model
     model = PositionLocalizationModel(
         signal_length=320,
-        d_model=128,
+        hidden_sizes=[128, 64, 32],  # Same as enhanced model
         num_heads=8,
-        num_layers=4,
-        dropout=0.1
+        dropout=0.1,
+        num_transformer_layers=4
     ).to(device)
     
     total_params = sum(p.numel() for p in model.parameters())
