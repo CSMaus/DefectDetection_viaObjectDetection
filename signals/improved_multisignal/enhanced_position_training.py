@@ -11,7 +11,6 @@ from datetime import datetime
 
 from enhanced_position_model_acc091 import EnhancedPositionMultiSignalClassifier
 from defect_focused_dataset import get_defect_focused_dataloader
-from realistic_noise_augmentation import RealisticNoiseAugmentation
 
 
 class FocalLoss(nn.Module):
@@ -89,14 +88,8 @@ def train_enhanced_position_model(model, train_loader, val_loader, optimizer, sc
     Stage 1: Train detection head only (epochs 1-3)
     Stage 2: Train position head only (epochs 4-10) 
     Stage 3: Fine-tune both together (epochs 11-15)
-    
-    Includes realistic noise augmentation for robustness
     """
     os.makedirs(save_dir, exist_ok=True)
-    
-    # Initialize realistic noise augmentation
-    noise_augmenter = RealisticNoiseAugmentation(augment_probability=0.25)  # 25% of sequences get noise
-    print(f"Realistic noise augmentation enabled: {noise_augmenter.augment_probability*100:.1f}% of training sequences will be augmented")
     
     history = {
         'epochs': [],
@@ -152,11 +145,6 @@ def train_enhanced_position_model(model, train_loader, val_loader, optimizer, sc
             signals = signals.to(device)
             labels = labels.to(device)
             defect_positions = defect_positions.to(device)
-            
-            # Apply realistic noise augmentation during training (not validation)
-            # This REPLACES original signals with noisy versions (not adding more data)
-            if model.training:
-                signals = noise_augmenter.augment_sequence(signals)
             
             defect_prob, defect_start, defect_end = model(signals)
             
@@ -474,7 +462,6 @@ def main():
     print(f"Using device: {device}")
     print("Enhanced training with:")
     print("  - Multi-stage training (detection → position → joint)")
-    print("  - Realistic noise augmentation (25% of sequences)")
     print("  - Enhanced position loss (L1 + IoU + consistency)")
     print("  - Dedicated position regression head")
     
