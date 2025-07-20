@@ -38,16 +38,24 @@ dropout = 0.1
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Using device: {device}")
 
+# model = PositionLocalizationModel(
+#         signal_length=signal_length,
+#         d_model=d_model,
+#         num_heads=num_heads,
+#         num_layers=num_layers,
+#         dropout=dropout
+#     ).to(device)
+
 model = PositionLocalizationModel(
-        signal_length=signal_length,
-        d_model=d_model,
-        num_heads=num_heads,
-        num_layers=num_layers,
-        dropout=dropout
+        signal_length=320,
+        hidden_sizes=[128, 64, 32],
+        num_heads=8,
+        dropout=0.1,
+        num_transformer_layers=4
     ).to(device)
 
 modelname = "PositionLocalizationModel"
-attempt = "001"
-model_path = f'models/PositionLocalization_20250720_1220/best_position_model.pth'
+attempt = "002"
+model_path = f'models/PositionLocalization_20250720_1404/best_position_model.pth'
 export_model_to_onnx(model, device, model_path,
                      f'models/{attempt}-{modelname}.onnx', signal_length, d_model, num_heads)

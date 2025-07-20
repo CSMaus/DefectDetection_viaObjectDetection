@@ -9,7 +9,7 @@ from tqdm import tqdm
 import matplotlib.pyplot as plt
 from datetime import datetime
 
-from enhanced_position_model import EnhancedPositionMultiSignalClassifier
+from enhanced_position_model_acc091 import EnhancedPositionMultiSignalClassifier
 from defect_focused_dataset import get_defect_focused_dataloader
 from realistic_noise_augmentation import RealisticNoiseAugmentation
 
@@ -466,7 +466,7 @@ def main():
     learning_rate = 0.0008
     weight_decay = 0.01
     
-    json_dir = "json_data_07/"  # json_data
+    json_dir = "json_data_0718/"  #"json_data_07/"  # json_data
     timestamp = datetime.now().strftime("%Y%m%d_%H%M")
     save_dir = f"models/enhanced_position_model_{timestamp}"
     

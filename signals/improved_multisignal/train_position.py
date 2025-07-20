@@ -243,13 +243,13 @@ def train_position_model(model, train_loader, val_loader, num_epochs, device, mo
                     defective_mask = labels[batch_idx] > 0
                     
                     if defective_mask.sum() > 0:
-                    # Calculate enhanced loss and accuracy
-                    mask = labels[batch_idx]  # Defect mask
-                    loss = enhanced_position_loss(
-                        pred_start[batch_idx], pred_end[batch_idx],
-                        positions[batch_idx, :, 0], positions[batch_idx, :, 1],
-                        mask
-                    )
+                        # Calculate enhanced loss and accuracy
+                        mask = labels[batch_idx]  # Defect mask
+                        loss = enhanced_position_loss(
+                            pred_start[batch_idx], pred_end[batch_idx],
+                            positions[batch_idx, :, 0], positions[batch_idx, :, 1],
+                            mask
+                        )
                     
                     if mask.sum() > 0:  # Only calculate accuracy if there are defects
                         accuracy = calculate_position_accuracy(
