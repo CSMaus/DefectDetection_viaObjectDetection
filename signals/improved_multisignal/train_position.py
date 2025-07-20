@@ -16,7 +16,6 @@ def plot_training_history(history, save_path=None):
     """Plot training history"""
     plt.figure(figsize=(15, 10))
     
-    # Loss plots
     plt.subplot(2, 3, 1)
     plt.plot(history['epochs'], history['train_loss'], 'b-', label='Train Loss')
     plt.plot(history['epochs'], history['val_loss'], 'r-', label='Val Loss')
@@ -26,7 +25,6 @@ def plot_training_history(history, save_path=None):
     plt.legend()
     plt.grid(True)
     
-    # Accuracy plots
     plt.subplot(2, 3, 2)
     plt.plot(history['epochs'], history['train_accuracy'], 'b-', label='Train Accuracy')
     plt.plot(history['epochs'], history['val_accuracy'], 'r-', label='Val Accuracy')
@@ -36,7 +34,6 @@ def plot_training_history(history, save_path=None):
     plt.legend()
     plt.grid(True)
     
-    # Learning rate plot
     plt.subplot(2, 3, 3)
     plt.plot(history['epochs'], history['learning_rate'], 'g-', label='Learning Rate')
     plt.title('Learning Rate Schedule')
@@ -58,18 +55,16 @@ def plot_training_history(history, save_path=None):
 def train_position_model(model, train_loader, val_loader, num_epochs, device, model_name, save_dir):
     """Train position localization model using only defective signals"""
     
-    # Create model-specific directory with timestamp
     timestamp = datetime.now().strftime("%Y%m%d_%H%M")
     model_save_dir = os.path.join(save_dir, f"{model_name}_{timestamp}")
     os.makedirs(model_save_dir, exist_ok=True)
     
     optimizer = torch.optim.AdamW(model.parameters(), lr=0.001, weight_decay=0.01)
     scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.7, patience=3)
-    criterion = nn.MSELoss()  # Mean Squared Error for position regression
+    criterion = nn.MSELoss()
     
     best_loss = float('inf')
     
-    # Initialize training history
     history = {
         'epochs': [],
         'train_loss': [],
@@ -87,7 +82,6 @@ def train_position_model(model, train_loader, val_loader, num_epochs, device, mo
         return both_correct.float().mean().item()
     
     for epoch in range(num_epochs):
-        # Training phase
         model.train()
         train_loss = 0.0
         train_accuracy = 0.0
@@ -100,33 +94,26 @@ def train_position_model(model, train_loader, val_loader, num_epochs, device, mo
             
             optimizer.zero_grad()
             
-            # Forward pass
             pred_start, pred_end = model(signals)
             
-            # Calculate loss and accuracy ONLY for defective signals
             batch_loss = 0.0
             batch_accuracy = 0.0
             valid_samples = 0
             
             for batch_idx in range(signals.size(0)):
-                # Find defective signals in this sequence
-                defective_mask = labels[batch_idx] > 0  # Signals with defects
+                defective_mask = labels[batch_idx] > 0
                 
-                if defective_mask.sum() > 0:  # If there are defective signals
-                    # Get true positions for defective signals
+                if defective_mask.sum() > 0:
                     true_start = positions[batch_idx, defective_mask, 0]
                     true_end = positions[batch_idx, defective_mask, 1]
                     
-                    # Get predicted positions for defective signals
                     pred_start_defective = pred_start[batch_idx, defective_mask]
                     pred_end_defective = pred_end[batch_idx, defective_mask]
                     
-                    # Calculate MSE loss for start and end positions
                     start_loss = criterion(pred_start_defective, true_start)
                     end_loss = criterion(pred_end_defective, true_end)
                     
-                    # Calculate accuracy
-                    accuracy = calculate_position_accuracy(pred_start_defective, pred_end_defective, 
+                    accuracy = calculate_position_accuracy(pred_start_defective, pred_end_defective,
                                                          true_start, true_end)
                     
                     batch_loss += (start_loss + end_loss)
@@ -138,7 +125,6 @@ def train_position_model(model, train_loader, val_loader, num_epochs, device, mo
                 batch_accuracy = batch_accuracy / valid_samples
                 batch_loss.backward()
                 
-                # Gradient clipping
                 torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
                 
                 optimizer.step()
@@ -150,7 +136,6 @@ def train_position_model(model, train_loader, val_loader, num_epochs, device, mo
         train_loss = train_loss / train_batches if train_batches > 0 else 0.0
         train_accuracy = train_accuracy / train_batches if train_batches > 0 else 0.0
         
-        # Validation phase
         model.eval()
         val_loss = 0.0
         val_accuracy = 0.0
@@ -162,32 +147,25 @@ def train_position_model(model, train_loader, val_loader, num_epochs, device, mo
                 labels = labels.to(device)
                 positions = positions.to(device)
                 
-                # Forward pass
                 pred_start, pred_end = model(signals)
                 
-                # Calculate loss and accuracy ONLY for defective signals
                 batch_loss = 0.0
                 batch_accuracy = 0.0
                 valid_samples = 0
                 
                 for batch_idx in range(signals.size(0)):
-                    # Find defective signals in this sequence
                     defective_mask = labels[batch_idx] > 0
                     
                     if defective_mask.sum() > 0:
-                        # Get true positions for defective signals
                         true_start = positions[batch_idx, defective_mask, 0]
                         true_end = positions[batch_idx, defective_mask, 1]
                         
-                        # Get predicted positions for defective signals
                         pred_start_defective = pred_start[batch_idx, defective_mask]
                         pred_end_defective = pred_end[batch_idx, defective_mask]
                         
-                        # Calculate MSE loss
                         start_loss = criterion(pred_start_defective, true_start)
                         end_loss = criterion(pred_end_defective, true_end)
                         
-                        # Calculate accuracy
                         accuracy = calculate_position_accuracy(pred_start_defective, pred_end_defective,
                                                              true_start, true_end)
                         
@@ -208,7 +186,6 @@ def train_position_model(model, train_loader, val_loader, num_epochs, device, mo
         current_lr = optimizer.param_groups[0]['lr']
         scheduler.step(val_loss)
         
-        # Update history
         history['epochs'].append(epoch + 1)
         history['train_loss'].append(train_loss)
         history['val_loss'].append(val_loss)
@@ -221,7 +198,6 @@ def train_position_model(model, train_loader, val_loader, num_epochs, device, mo
         print(f"  Val:   Loss={val_loss:.4f}, Acc={val_accuracy:.4f}")
         print(f"  LR: {current_lr:.6f}")
         
-        # Save checkpoint every epoch
         checkpoint = {
             'epoch': epoch + 1,
             'model_state_dict': model.state_dict(),
@@ -236,7 +212,6 @@ def train_position_model(model, train_loader, val_loader, num_epochs, device, mo
         checkpoint_path = os.path.join(model_save_dir, f"checkpoint_epoch_{epoch+1}.pth")
         torch.save(checkpoint, checkpoint_path)
         
-        # Save training history JSON
         history_path = os.path.join(model_save_dir, 'training_history.json')
         with open(history_path, 'w') as f:
             json.dump(history, f, indent=2)
@@ -263,11 +238,9 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
     
-    # Create main models directory
     main_models_dir = "models"
     os.makedirs(main_models_dir, exist_ok=True)
     
-    # Load data with ONLY defective sequences (isOnlyDefective=True)
     print("Loading ONLY defective sequences for position training...")
     train_loader, val_loader = get_defect_focused_dataloader(
         "json_data_0717",
@@ -276,10 +249,9 @@ def main():
         shuffle=True,
         validation_split=0.2,
         min_defects_per_sequence=1,
-        isOnlyDefective=True  # Only defective sequences
+        isOnlyDefective=True
     )
     
-    # Create position localization model
     model = PositionLocalizationModel(
         signal_length=320,
         d_model=128,
@@ -291,10 +263,9 @@ def main():
     total_params = sum(p.numel() for p in model.parameters())
     print(f"Model parameters: {total_params:,}")
     
-    # Train the model
     best_loss, history = train_position_model(
         model, train_loader, val_loader,
-        num_epochs=20, device=device, 
+        num_epochs=15, device=device,
         model_name="PositionLocalization", 
         save_dir=main_models_dir
     )
