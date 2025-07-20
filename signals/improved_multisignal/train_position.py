@@ -17,7 +17,7 @@ def plot_training_history(history, save_path=None):
     plt.figure(figsize=(15, 10))
     
     # Loss plots
-    plt.subplot(2, 2, 1)
+    plt.subplot(2, 3, 1)
     plt.plot(history['epochs'], history['train_loss'], 'b-', label='Train Loss')
     plt.plot(history['epochs'], history['val_loss'], 'r-', label='Val Loss')
     plt.title('Training and Validation Loss')
@@ -26,8 +26,18 @@ def plot_training_history(history, save_path=None):
     plt.legend()
     plt.grid(True)
     
+    # Accuracy plots
+    plt.subplot(2, 3, 2)
+    plt.plot(history['epochs'], history['train_accuracy'], 'b-', label='Train Accuracy')
+    plt.plot(history['epochs'], history['val_accuracy'], 'r-', label='Val Accuracy')
+    plt.title('Training and Validation Accuracy')
+    plt.xlabel('Epoch')
+    plt.ylabel('Accuracy')
+    plt.legend()
+    plt.grid(True)
+    
     # Learning rate plot
-    plt.subplot(2, 2, 2)
+    plt.subplot(2, 3, 3)
     plt.plot(history['epochs'], history['learning_rate'], 'g-', label='Learning Rate')
     plt.title('Learning Rate Schedule')
     plt.xlabel('Epoch')
@@ -64,13 +74,23 @@ def train_position_model(model, train_loader, val_loader, num_epochs, device, mo
         'epochs': [],
         'train_loss': [],
         'val_loss': [],
+        'train_accuracy': [],
+        'val_accuracy': [],
         'learning_rate': []
     }
+    
+    def calculate_position_accuracy(pred_start, pred_end, true_start, true_end, tolerance=0.1):
+        """Calculate accuracy based on position tolerance"""
+        start_correct = torch.abs(pred_start - true_start) <= tolerance
+        end_correct = torch.abs(pred_end - true_end) <= tolerance
+        both_correct = start_correct & end_correct
+        return both_correct.float().mean().item()
     
     for epoch in range(num_epochs):
         # Training phase
         model.train()
         train_loss = 0.0
+        train_accuracy = 0.0
         train_batches = 0
         
         for signals, labels, positions in tqdm(train_loader, desc=f"Epoch {epoch+1}/{num_epochs} - Training"):
@@ -83,8 +103,9 @@ def train_position_model(model, train_loader, val_loader, num_epochs, device, mo
             # Forward pass
             pred_start, pred_end = model(signals)
             
-            # Calculate loss ONLY for defective signals
+            # Calculate loss and accuracy ONLY for defective signals
             batch_loss = 0.0
+            batch_accuracy = 0.0
             valid_samples = 0
             
             for batch_idx in range(signals.size(0)):
@@ -104,11 +125,17 @@ def train_position_model(model, train_loader, val_loader, num_epochs, device, mo
                     start_loss = criterion(pred_start_defective, true_start)
                     end_loss = criterion(pred_end_defective, true_end)
                     
+                    # Calculate accuracy
+                    accuracy = calculate_position_accuracy(pred_start_defective, pred_end_defective, 
+                                                         true_start, true_end)
+                    
                     batch_loss += (start_loss + end_loss)
+                    batch_accuracy += accuracy
                     valid_samples += 1
             
             if valid_samples > 0:
                 batch_loss = batch_loss / valid_samples
+                batch_accuracy = batch_accuracy / valid_samples
                 batch_loss.backward()
                 
                 # Gradient clipping
@@ -117,13 +144,16 @@ def train_position_model(model, train_loader, val_loader, num_epochs, device, mo
                 optimizer.step()
                 
                 train_loss += batch_loss.item()
+                train_accuracy += batch_accuracy
                 train_batches += 1
         
         train_loss = train_loss / train_batches if train_batches > 0 else 0.0
+        train_accuracy = train_accuracy / train_batches if train_batches > 0 else 0.0
         
         # Validation phase
         model.eval()
         val_loss = 0.0
+        val_accuracy = 0.0
         val_batches = 0
         
         with torch.no_grad():
@@ -135,8 +165,9 @@ def train_position_model(model, train_loader, val_loader, num_epochs, device, mo
                 # Forward pass
                 pred_start, pred_end = model(signals)
                 
-                # Calculate loss ONLY for defective signals
+                # Calculate loss and accuracy ONLY for defective signals
                 batch_loss = 0.0
+                batch_accuracy = 0.0
                 valid_samples = 0
                 
                 for batch_idx in range(signals.size(0)):
@@ -156,15 +187,23 @@ def train_position_model(model, train_loader, val_loader, num_epochs, device, mo
                         start_loss = criterion(pred_start_defective, true_start)
                         end_loss = criterion(pred_end_defective, true_end)
                         
+                        # Calculate accuracy
+                        accuracy = calculate_position_accuracy(pred_start_defective, pred_end_defective,
+                                                             true_start, true_end)
+                        
                         batch_loss += (start_loss + end_loss)
+                        batch_accuracy += accuracy
                         valid_samples += 1
                 
                 if valid_samples > 0:
                     batch_loss = batch_loss / valid_samples
+                    batch_accuracy = batch_accuracy / valid_samples
                     val_loss += batch_loss.item()
+                    val_accuracy += batch_accuracy
                     val_batches += 1
         
         val_loss = val_loss / val_batches if val_batches > 0 else 0.0
+        val_accuracy = val_accuracy / val_batches if val_batches > 0 else 0.0
         
         current_lr = optimizer.param_groups[0]['lr']
         scheduler.step(val_loss)
@@ -173,11 +212,13 @@ def train_position_model(model, train_loader, val_loader, num_epochs, device, mo
         history['epochs'].append(epoch + 1)
         history['train_loss'].append(train_loss)
         history['val_loss'].append(val_loss)
+        history['train_accuracy'].append(train_accuracy)
+        history['val_accuracy'].append(val_accuracy)
         history['learning_rate'].append(current_lr)
         
         print(f"Epoch {epoch+1}/{num_epochs}")
-        print(f"  Train Loss: {train_loss:.4f}")
-        print(f"  Val Loss:   {val_loss:.4f}")
+        print(f"  Train: Loss={train_loss:.4f}, Acc={train_accuracy:.4f}")
+        print(f"  Val:   Loss={val_loss:.4f}, Acc={val_accuracy:.4f}")
         print(f"  LR: {current_lr:.6f}")
         
         # Save checkpoint every epoch
@@ -187,6 +228,8 @@ def train_position_model(model, train_loader, val_loader, num_epochs, device, mo
             'optimizer_state_dict': optimizer.state_dict(),
             'train_loss': train_loss,
             'val_loss': val_loss,
+            'train_accuracy': train_accuracy,
+            'val_accuracy': val_accuracy,
             'learning_rate': current_lr
         }
         
