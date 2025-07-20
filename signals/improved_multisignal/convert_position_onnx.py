@@ -17,7 +17,7 @@ def export_model_to_onnx(model, device, model_path, onnx_model_path, signal_leng
         dummy_input,
         onnx_model_path,
         export_params=True,
-        opset_version=13,
+        opset_version=15,
         input_names=['input'],
         output_names=['defect_start', 'defect_end'],
         dynamic_axes={
