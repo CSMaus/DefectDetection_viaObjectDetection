@@ -580,6 +580,6 @@ class PositionPredictionVisualization(Scene):
         iou = intersection / union if union > 0 else 0
         
         iou_text = Text(f"IoU = {iou:.3f}", font_size=18, color=PURPLE)
-        iou_text.move_to([3, -2, 0])  # MOVED DOWN
+        iou_text.move_to([3, -2.2, 0])
         self.play(Write(iou_text))
         self.wait(3)

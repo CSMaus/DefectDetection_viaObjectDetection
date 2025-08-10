@@ -64,7 +64,7 @@ def main():
     print("🎬 Using real PAUT JSON data for visualizations...")
     print("🔍 All debug prints from data loading will be shown below...")
     
-    # Available scenes (removed paut_3d_visualization scenes)
+    # Available scenes - PAUT ONLY
     scenes = {
         "1": ("signal_processing_animation.py", "RealSignalProcessing", "Real Signal Analysis"),
         "2": ("signal_processing_animation.py", "PositionPredictionVisualization", "Position Prediction Process"),

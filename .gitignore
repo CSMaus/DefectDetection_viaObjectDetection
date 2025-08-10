@@ -39,3 +39,4 @@
 *.mp4
 /signals/improved_multisignal/visualization/media/videos
 *.npy
+/signals/improved_multisignal/visualization/media
