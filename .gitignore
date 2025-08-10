@@ -35,3 +35,7 @@
 /SignalSequenceDetection/signal_dataset_defected
 /signals/improved_multisignal/models
 /SignalSequenceDetection/.idea
+*.svg
+*.mp4
+/signals/improved_multisignal/visualization/media/videos
+*.npy
