@@ -14,7 +14,7 @@ import os
 class IoUVisualization(Scene):
     def construct(self):
         # Title
-        title = Text("IoU (Intersection over Union) Explained", font_size=28)
+        title = Text("IoU (Intersection over Union)", font_size=28)
         title.to_edge(UP)
         self.add(title)
         
