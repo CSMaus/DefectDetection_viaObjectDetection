@@ -9,7 +9,7 @@ import sys
 import subprocess
 
 # Global debug control - set to False to disable all debug prints
-DEBUG_PRINTS = False
+DEBUG_PRINTS = True
 
 def run_manim_scene(file_name, scene_name, quality="high_quality"):
     """Run a specific Manim scene"""

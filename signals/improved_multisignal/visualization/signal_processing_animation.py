@@ -29,14 +29,107 @@ class RealSignalProcessing(Scene):
         title.to_edge(UP)
         self.add(title)
         
-        # Get real clean vs defect signal comparison
-        clean_signal, defect_signal, defect_info = loader.get_signal_comparison()
-        if clean_signal is None or defect_signal is None:
-            print("Could not find clean and defect signals")
-            return
+        # Force loader to try ALL files until finding defect > 0.45
+        print("Searching through ALL files for defect > 0.45...")
+        
+        # Get all available JSON files
+        all_files = loader.json_files
+        print(f"Found {len(all_files)} JSON files to search")
+        
+        clean_signal = None
+        defect_signal = None
+        defect_info = None
+        
+        for file_idx, filename in enumerate(all_files):
+            print(f"Checking file {file_idx+1}/{len(all_files)}: {filename}")
+            
+            # Try to get defect sequences from this specific file
+            sequences = loader.get_defect_sequences(filename, seq_length=50)
+            if not sequences:
+                print(f"   No sequences in {filename}")
+                continue
+                
+            # Check each sequence in this file
+            for seq_idx, sequence in enumerate(sequences):
+                print(f"   Sequence {seq_idx+1}: checking signals...")
+                
+                # Look for defect signals in this sequence
+                for i, (signal, label, info) in enumerate(zip(sequence['signals'], 
+                                                             sequence['labels'], 
+                                                             sequence['defect_info'])):
+                    if label == 1 and info.get('start', 0) > 0:  # Defect signal
+                        # Calculate percentage position
+                        defect_start_mm = info['start']
+                        depth_range = sequence['depth_range']
+                        defect_percentage = (defect_start_mm - depth_range[0]) / (depth_range[1] - depth_range[0])
+                        
+                        print(f"      Signal {i}: defect at {defect_start_mm:.1f}mm = {defect_percentage:.3f}")
+                        
+                        if defect_percentage > 0.16:
+                            print(f"FOUND SUITABLE DEFECT in {filename} at {defect_percentage:.3f}!")
+                            
+                            # Get clean and defect signals from MIDDLE of sequence for better comparison
+                            sequence_length = len(sequence['signals'])
+                            middle_range_start = sequence_length // 3  # Around 1/3 position
+                            middle_range_end = 2 * sequence_length // 3  # Around 2/3 position
+                            
+                            # Find clean signal from middle range
+                            for j in range(middle_range_start, middle_range_end):
+                                if j < len(sequence['signals']) and sequence['labels'][j] == 0:
+                                    clean_signal = sequence['signals'][j]
+                                    print(f"      Using clean signal from position {j} (middle range)")
+                                    break
+                            else:
+                                # Fallback to any clean signal
+                                for j, (clean_sig, clean_label, clean_info) in enumerate(zip(sequence['signals'], 
+                                                                                            sequence['labels'], 
+                                                                                            sequence['defect_info'])):
+                                    if clean_label == 0:
+                                        clean_signal = clean_sig
+                                        print(f"      Using clean signal from position {j} (fallback)")
+                                        break
+                            
+                            # Find defect signal from middle range
+                            for j in range(middle_range_start, middle_range_end):
+                                if (j < len(sequence['signals']) and 
+                                    sequence['labels'][j] == 1 and 
+                                    sequence['defect_info'][j].get('start', 0) > 0):
+                                    
+                                    # Check if this defect also meets our criteria
+                                    alt_defect_start = sequence['defect_info'][j]['start']
+                                    alt_defect_percentage = (alt_defect_start - depth_range[0]) / (depth_range[1] - depth_range[0])
+                                    
+                                    if alt_defect_percentage > 0.26:
+                                        defect_signal = sequence['signals'][j]
+                                        defect_info = sequence['defect_info'][j].copy()
+                                        defect_info['depth_range'] = sequence['depth_range']
+                                        print(f"      Using defect signal from position {j} (middle range) with {alt_defect_percentage:.3f}")
+                                        break
+                            else:
+                                # Use the current defect signal if no suitable one in middle
+                                defect_signal = signal
+                                defect_info = info.copy()
+                                defect_info['depth_range'] = sequence['depth_range']
+                                print(f"      Using defect signal from position {i} (original)")
+                            
+                            # Found what we need, exit all loops
+                            break
+                    
+                if defect_signal is not None:
+                    break
+                    
+            if defect_signal is not None:
+                break
+        
+        if defect_signal is None:
+            print("ERROR: Could not find ANY defect > 0.45 in ALL files!")
+            # Fallback to original method
+            clean_signal, defect_signal, defect_info = loader.get_signal_comparison()
+        else:
+            print(f"SUCCESS: Using defect at {defect_info['start']:.1f}mm")
         
         # Show clean vs defect signal
-        self.show_signal_comparison(clean_signal, defect_signal, defect_info)
+        self.show_signal_comparison(clean_signal, defect_signal, defect_info, loader)
         self.wait(2)
         
         # Show CNN feature extraction
@@ -47,17 +140,19 @@ class RealSignalProcessing(Scene):
         self.show_transformer_attention(loader)
         self.wait(2)
     
-    def show_signal_comparison(self, clean_signal, defect_signal, defect_info):
-        # Clean signal
+    def show_signal_comparison(self, clean_signal, defect_signal, defect_info, loader):
+        # Use the provided defect signal (it's already selected from real data)
+        
+        # Health signal (left side)
         clean_axes = Axes(
             x_range=[0, len(clean_signal), len(clean_signal)//4],
             y_range=[np.min(clean_signal)-0.1, np.max(clean_signal)+0.1, 0.2],
             x_length=5,
             y_length=2,
-            axis_config={"color": BLUE}
-        ).move_to([-2, 1.5, 0])
+            axis_config={"color": BLUE, "stroke_width": 1, "tip_length": 0.02}  # TINY arrows
+        ).move_to([-2.5, 1.5, 0])
         
-        clean_label = Text("Clean Signal", font_size=20, color=BLUE)
+        clean_label = Text("Health Signal", font_size=20, color=BLUE)
         clean_label.next_to(clean_axes, UP)
         
         # Plot clean signal
@@ -68,16 +163,16 @@ class RealSignalProcessing(Scene):
         clean_curve = VMobject(color=BLUE)
         clean_curve.set_points_smoothly(clean_points)
         
-        # Defect signal
+        # Signal with defect echo (right side, more separated)
         defect_axes = Axes(
             x_range=[0, len(defect_signal), len(defect_signal)//4],
             y_range=[np.min(defect_signal)-0.1, np.max(defect_signal)+0.1, 0.2],
             x_length=5,
             y_length=2,
-            axis_config={"color": RED}
-        ).move_to([2, 1.5, 0])
+            axis_config={"color": RED, "stroke_width": 1, "tip_length": 0.02}  # TINY arrows
+        ).move_to([2.5, 1.5, 0])
         
-        defect_label = Text("Defect Signal", font_size=20, color=RED)
+        defect_label = Text("Signal with Defect Echo", font_size=20, color=RED)
         defect_label.next_to(defect_axes, UP)
         
         # Plot defect signal
@@ -134,16 +229,14 @@ class RealSignalProcessing(Scene):
         title.to_edge(UP)
         self.add(title)
         
-        # Original signal
+        # Original signal (no text about samples)
         original_axes = Axes(
             x_range=[0, len(signal), len(signal)//4],
             y_range=[np.min(signal)-0.1, np.max(signal)+0.1, 0.2],
             x_length=8,
-            y_length=1.5
+            y_length=1.5,
+            axis_config={"stroke_width": 1, "tip_length": 0.02, "tip_width": 0.06}  # TINY arrows
         ).move_to([0, 2.5, 0])
-        
-        original_label = Text(f"Input Signal ({len(signal)} samples)", font_size=18)
-        original_label.next_to(original_axes, UP)
         
         # Plot original signal
         original_points = []
@@ -153,7 +246,7 @@ class RealSignalProcessing(Scene):
         original_curve = VMobject(color=WHITE)
         original_curve.set_points_smoothly(original_points)
         
-        self.play(Create(original_axes), Write(original_label))
+        self.play(Create(original_axes))
         self.play(Create(original_curve))
         self.wait(1)
         
@@ -176,11 +269,11 @@ class RealSignalProcessing(Scene):
         layer3_label = Text("Conv1D: 64→64 channels + Pooling", font_size=16)
         layer3_label.move_to(layer3_box.get_center())
         
-        # Feature maps visualization
+        # Feature maps visualization - show 6 out of 64
         feature_maps = VGroup()
-        for i in range(8):  # Show 8 feature maps
+        for i in range(6):  # Show 6 feature maps instead of 8
             # Simulate feature map by applying different filters to original signal
-            if i < 4:
+            if i < 3:
                 # Edge detection type filters
                 feature_signal = np.diff(signal, prepend=signal[0])
                 feature_signal = np.maximum(0, feature_signal * (i+1))
@@ -192,9 +285,10 @@ class RealSignalProcessing(Scene):
             feature_axes = Axes(
                 x_range=[0, len(feature_signal), len(feature_signal)//4],
                 y_range=[0, np.max(feature_signal)+0.1, np.max(feature_signal)/2],
-                x_length=1.8,
-                y_length=0.7
-            ).move_to([-3.5 + i*0.9, -2.5, 0])
+                x_length=1.0,  # Smaller width
+                y_length=0.7,
+                axis_config={"stroke_width": 1, "tip_length": 0.02, "tip_width": 0.06}  # TINY arrow tips
+            ).move_to([-3.5 + i*1.5, -2.5, 0])  # Much more spacing - 1.5 units apart
             
             # Plot feature
             feature_points = []
@@ -206,14 +300,14 @@ class RealSignalProcessing(Scene):
             
             feature_maps.add(feature_axes, feature_curve)
         
-        feature_label = Text("64 Feature Maps (showing 8)", font_size=18)
+        feature_label = Text("64 Feature Maps (showing 6)", font_size=18)
         feature_label.move_to([0, -3.2, 0])
         
-        # Animation with proper arrows
-        arrow1 = Arrow(start=[0, 1.8, 0], end=[0, 1.4, 0])
-        arrow2 = Arrow(start=[0, 0.6, 0], end=[0, 0.4, 0])
-        arrow3 = Arrow(start=[0, -0.4, 0], end=[0, -0.6, 0])
-        arrow4 = Arrow(start=[0, -1.4, 0], end=[0, -1.8, 0])
+        # Animation with smaller arrows
+        arrow1 = Arrow(start=[0, 1.8, 0], end=[0, 1.4, 0], stroke_width=2, max_tip_length_to_length_ratio=0.1)
+        arrow2 = Arrow(start=[0, 0.6, 0], end=[0, 0.4, 0], stroke_width=2, max_tip_length_to_length_ratio=0.1)
+        arrow3 = Arrow(start=[0, -0.4, 0], end=[0, -0.6, 0], stroke_width=2, max_tip_length_to_length_ratio=0.1)
+        arrow4 = Arrow(start=[0, -1.4, 0], end=[0, -1.8, 0], stroke_width=2, max_tip_length_to_length_ratio=0.1)
         
         self.play(Create(arrow1))
         self.play(Create(layer1_box), Write(layer1_label))
@@ -248,7 +342,7 @@ class RealSignalProcessing(Scene):
         signals = mixed_sequence['signals']
         labels = mixed_sequence['labels']
         
-        # Show subset of signals for visualization (first 12)
+        # Show subset of signals for visualization (7 in first row, 5 in second row)
         display_count = 12
         sequence_signals = VGroup()
         signal_labels = VGroup()
@@ -261,13 +355,24 @@ class RealSignalProcessing(Scene):
         for i in range(display_count):
             signal = signals[i]
             
-            # Create signal visualization
+            # Position signals: 7 in first row, 5 in second row
+            if i < 7:
+                # First row: 7 signals
+                x_pos = -4.2 + i * 1.2  # Spacing for 7 signals
+                y_pos = 2
+            else:
+                # Second row: 5 signals (centered)
+                x_pos = -3.0 + (i - 7) * 1.2  # Centered spacing for 5 signals
+                y_pos = 1.2
+            
+            # Create signal visualization with wider plots
             signal_axes = Axes(
                 x_range=[0, len(signal), len(signal)//4],
                 y_range=[np.min(signal), np.max(signal), (np.max(signal)-np.min(signal))/2],
-                x_length=1,
-                y_length=0.7
-            ).move_to([-5.5 + i*1, 2, 0])
+                x_length=1.0,  # Wider plots
+                y_length=0.6,
+                axis_config={"stroke_width": 1, "tip_length": 0.02, "tip_width": 0.06}  # TINY arrow tips
+            ).move_to([x_pos, y_pos, 0])
             
             # Plot signal
             signal_points = []
@@ -283,17 +388,18 @@ class RealSignalProcessing(Scene):
             
             sequence_signals.add(signal_axes, signal_curve)
             
-            # Label
+            # Label positioned at top-left corner of each plot
             label_text = f"S{i+1}"
             if labels[i] == 1:
                 label_text += "D"  # D for defect
-            label = Text(label_text, font_size=12)
-            label.next_to(signal_axes, DOWN)
+            label = Text(label_text, font_size=10)
+            # Position at top-left corner of the signal plot
+            label.move_to([x_pos + 0.4, y_pos + 0.25, 0])  # Top-left corner
             signal_labels.add(label)
         
-        # Add indication of remaining signals
+        # Add indication of remaining signals (positioned on same line as second row)
         remaining_text = Text(f"... + {50-display_count} more signals", font_size=14)
-        remaining_text.move_to([4, 2, 0])
+        remaining_text.move_to([3.5, 1.0, 0])  # Same Y as second row signals
         
         self.play(Create(sequence_signals), Write(signal_labels))
         self.play(Write(remaining_text))
@@ -301,7 +407,7 @@ class RealSignalProcessing(Scene):
         
         # Show attention weights
         attention_title = Text("Self-Attention: Signal Relationships (12×12 subset)", font_size=18)
-        attention_title.move_to([0, 0.5, 0])
+        attention_title.move_to([0, 0.1, 0])  # Actually moved lower (negative Y)
         self.play(Write(attention_title))
         
         # Attention matrix visualization based on real labels (12x12 subset)
@@ -351,7 +457,7 @@ class RealSignalProcessing(Scene):
                     highlights.add(highlight)
         
         matrix_label = Text("Attention Matrix (12×12 subset)", font_size=14)
-        matrix_label.move_to([0, -2.8, 0])
+        matrix_label.move_to([0, -2.95, 0])
         
         self.play(Create(attention_matrix), Write(matrix_label))
         self.wait(1)
@@ -360,7 +466,7 @@ class RealSignalProcessing(Scene):
             self.play(Create(highlights))
             
             # Add explanation
-            explanation = Text(f"Defect signals attend to each other\n(Real sequence: {len(defect_indices)} defects shown)", 
+            explanation = Text(f"Defect signals attend to each other",
                               font_size=16, color=YELLOW)
             explanation.move_to([4, -1.5, 0])
             self.play(Write(explanation))
@@ -392,7 +498,8 @@ class PositionPredictionVisualization(Scene):
             x_range=[0, len(defect_signal), len(defect_signal)//4],
             y_range=[np.min(defect_signal)-0.1, np.max(defect_signal)+0.1, 0.2],
             x_length=8,
-            y_length=1.5
+            y_length=1.5,
+            axis_config={"stroke_width": 1, "tip_length": 0.02, "tip_width": 0.06}  # TINY arrow tips
         ).move_to([0, 1.5, 0])
         
         # signal_label = Text(f"Defect Signal (Depth: {depth_range[0]:.1f}-{depth_range[1]:.1f}mm)",
@@ -418,7 +525,8 @@ class PositionPredictionVisualization(Scene):
             x_range=[0, len(clean_signal), len(clean_signal)//4],
             y_range=[np.min(clean_signal)-0.1, np.max(clean_signal)+0.1, 0.2],
             x_length=8,
-            y_length=1.5
+            y_length=1.5,
+            axis_config={"stroke_width": 1, "tip_length": 0.02, "tip_width": 0.06}  # TINY arrow tips
         ).move_to([0, 1.5, 0])
         
         # Plot health signal with dashed line
