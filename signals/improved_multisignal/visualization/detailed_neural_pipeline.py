@@ -332,7 +332,7 @@ class SignalInputVisualization(Scene):
     def show_parallel_feature_extraction(self):
         # Move all signals to the left and make them BIGGER
         all_signals = VGroup(self.signal_plots, self.dots, self.dots_text, self.last_signals)
-        self.play(all_signals.animate.scale(0.6).shift(LEFT * 4.5), run_time=2)
+        self.play(all_signals.animate.scale(0.8).shift(LEFT * 4.5), run_time=2)
 
         # Layout - adjusted for 6 arrows and better spacing
         lanes_to_show = 6  # 6 arrows as requested
@@ -353,11 +353,38 @@ class SignalInputVisualization(Scene):
         weight_lines = VGroup()
         out_arrows = VGroup()
         out_feats = VGroup()
+        signal_arrows = VGroup()  # Add this line for arrows from signals to CNN
 
         # Use real shared feature stats to vary opacity slightly (purely visual)
         shared_feats = data_loader.model_features.get('shared_features', None)
+
+        # Calculate signal positions after scaling and shifting
+        signal_positions = []
+
+        for i in range(4):
+            y_pos = (2 - i * 1.2) * 0.8 + 1.5  # Account for 0.8 scale and UP shift
+            signal_positions.append(y_pos)
+
+        # Add dots position and last 2 signals
+        dots_y = -0.2 * 0.8 + 1.5
+        signal_positions.append(dots_y)  # Position 4 = dots
+        for i in range(2):
+            y_pos = (-2.5 - i * 1.2) * 0.8 + 1.5
+            signal_positions.append(y_pos)
+
         for i in range(lanes_to_show):
-            y = top_y - i * lane_gap
+            # y = top_y - i * lane_gap
+            y = signal_positions[i]
+            signal_x = -5.5  # Position where signals moved to
+            if i == 4:
+                # Special case: dots between CNN blocks for hidden signals
+                dots_between_cnn = VGroup()
+                for dot_i in range(3):
+                    dot = Dot(color=YELLOW, radius=0.08)
+                    dot.move_to([x_cnn, y - 0.3 + dot_i * 0.15, 0])
+                    dots_between_cnn.add(dot)
+                lane_groups.add(dots_between_cnn)
+                continue
 
             # Per-lane CNN block (identical block = same architecture)
             cnn_block = Rectangle(width=1.6, height=0.45, color=GREEN, fill_opacity=0.85)
@@ -365,8 +392,13 @@ class SignalInputVisualization(Scene):
             cnn_label = Text("CNN", font_size=18, color=WHITE).move_to(cnn_block.get_center())
 
             # STRAIGHT HORIZONTAL arrows (no lines in front, no angles)
-            to_cnn = Arrow(start=[x_in, y, 0], end=[x_cnn - 0.9, y, 0],
-                           color=WHITE, stroke_width=2, max_tip_length_to_length_ratio=0.1)
+            # to_cnn = Arrow(start=[x_in, y, 0], end=[x_cnn - 0.9, y, 0],
+            #                color=WHITE, stroke_width=2, max_tip_length_to_length_ratio=0.1)
+
+            # Arrow FROM signal plot position TO CNN block
+            signal_to_cnn = Arrow(start=[signal_x, y, 0], end=[x_cnn - 0.9, y, 0],
+                                  color = WHITE, stroke_width = 2, max_tip_length_to_length_ratio = 0.1)
+            # Arrow FROM CNN TO output
             to_out = Arrow(start=[x_cnn + 0.9, y, 0], end=[x_out - 0.6, y, 0],
                            color=WHITE, stroke_width=2, max_tip_length_to_length_ratio=0.1)
 
@@ -383,7 +415,9 @@ class SignalInputVisualization(Scene):
             # Dashed “broadcast” line from shared θ → per-lane CNN (shows weight sharing)
             wline = DashedLine(theta_box.get_bottom(), cnn_block.get_top(), dash_length=0.12, color=YELLOW)
 
-            lane_groups.add(VGroup(to_cnn, cnn_block, cnn_label))
+            # lane_groups.add(VGroup(to_cnn, cnn_block, cnn_label))
+            signal_arrows.add(signal_to_cnn)
+            lane_groups.add(VGroup(cnn_block, cnn_label))
             weight_lines.add(wline)
             out_arrows.add(to_out)
             out_feats.add(VGroup(feat, feat_text))
@@ -396,6 +430,7 @@ class SignalInputVisualization(Scene):
 
         # Animate
         self.play(Create(theta_box), Write(theta_text), run_time=0.6)
+        self.play(LaggedStart(*[Create(arrow) for arrow in signal_arrows if arrow], lag_ratio=0.05), run_time=1.0)
         self.play(LaggedStart(*[Create(g) for g in lane_groups], lag_ratio=0.05), run_time=1.2)
         self.play(LaggedStart(*[Create(l) for l in weight_lines], lag_ratio=0.05), run_time=0.8)
         self.play(LaggedStart(*[Create(a) for a in out_arrows], lag_ratio=0.05), run_time=0.6)
