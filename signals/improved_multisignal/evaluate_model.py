@@ -10,7 +10,8 @@ import seaborn as sns
 from tqdm import tqdm
 import argparse
 
-from improved_model import ImprovedMultiSignalClassifier
+# from improved_model import ImprovedMultiSignalClassifier
+from hybrid_model import HybridModel
 
 
 class ModelEvaluator:
@@ -56,13 +57,24 @@ class ModelEvaluator:
                 state_dict = checkpoint
             
             # Initialize model with default parameters (you may need to adjust these)
-            model = ImprovedMultiSignalClassifier(
-                signal_length=320,  # Adjust if different
-                hidden_sizes=[128, 64, 32],  # Adjust if different
-                num_heads=8,
-                dropout=0.2,
-                num_transformer_layers=4
+            signal_length = 320
+            hidden_sizes = [128, 64, 32]
+            num_heads = 8
+            dropout = 0.15
+            num_transformer_layers = 4
+            model = HybridModel(
+                signal_length=signal_length,
+                hidden_sizes=hidden_sizes,
+                num_heads=num_heads,
+                dropout=dropout
             )
+            # model = ImprovedMultiSignalClassifier(
+            #     signal_length=320,  # Adjust if different
+            #     hidden_sizes=[128, 64, 32],  # Adjust if different
+            #     num_heads=8,
+            #     dropout=0.2,
+            #     num_transformer_layers=4
+            # )
             
             model.load_state_dict(state_dict)
             model.to(self.device)
@@ -482,9 +494,10 @@ def main():
 
 if __name__ == "__main__":
     timestamp = datetime.now().strftime("%Y%m%d_%H%M")
-    MODEL_PATH = "models/enhanced_position_model_20250711_1601/best_model.pth"
+    # MODEL_PATH = "models/enhanced_position_model_20250711_1601/best_model.pth"
+    MODEL_PATH = "models/HybridBinaryModel_20250718_1521/best_detection.pth"
     JSON_DIR = "json_data"
-    OUTPUT_DIR = f"evaluation_results-{timestamp}"
+    OUTPUT_DIR = f"evaluation-results/HybridBinaryModel_20250718_1521/"
     
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     
