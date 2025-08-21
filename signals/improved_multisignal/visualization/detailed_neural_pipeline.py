@@ -191,6 +191,7 @@ class SignalInputVisualization(Scene):
     def show_individual_signals(self):
         """Show first 4 signals as individual plots"""
         debug_print("Phase 1: Individual signals")
+        self.signal_axes = []
         
         signal_plots = VGroup()
         
@@ -210,6 +211,7 @@ class SignalInputVisualization(Scene):
                 axis_config={"color": WHITE, "stroke_width": 1, "tip_length": 0.02}
             )
             axes.shift(UP * (2 - i * 1.2))
+            self.signal_axes.append(axes)
             
             # Plot signal
             signal_curve = axes.plot(
@@ -263,11 +265,10 @@ class SignalInputVisualization(Scene):
     def show_signals_with_dots(self):
         """Show dots indicating more signals and last 2 signals"""
         debug_print("Phase 2: Dots and last signals")
-        
-        # Shrink existing signals
+        self.last_axes = []
+
         self.play(self.signal_plots.animate.scale(0.6).shift(UP * 1.5), run_time=1)
         
-        # Add dots
         dots = VGroup()
         for i in range(3):
             dot = Dot(color=YELLOW, radius=0.1)
@@ -318,7 +319,8 @@ class SignalInputVisualization(Scene):
             
             status_label = Text(status_text, font_size=8, color=RED if is_defect else BLUE)
             status_label.next_to(axes, RIGHT)
-            
+
+            self.last_axes.append(axes)
             last_signals.add(axes, signal_curve, label, status_label)
         
         self.play(Create(last_signals), run_time=2)
@@ -328,8 +330,105 @@ class SignalInputVisualization(Scene):
         self.dots = dots
         self.dots_text = dots_text
         self.last_signals = last_signals
-    
+
     def show_parallel_feature_extraction(self):
+        # Move all signals left (keep your values)
+        all_signals = VGroup(self.signal_plots, self.dots, self.dots_text, self.last_signals)
+        self.play(all_signals.animate.scale(0.8).shift(LEFT * 4.5), run_time=2)
+
+        # Collect real anchors AFTER the move
+        anchors = [ax.get_right() for ax in self.signal_axes[:4]]  # 4 plots
+        anchors.append(self.dots.get_right())  # dots row
+        anchors.append(self.last_axes[0].get_right())  # first of the last two
+        lanes_to_show = len(anchors)  # 6
+
+        # Layout
+        x_cnn = 1.2
+        x_out = 4.8
+        top_y = max(p[1] for p in anchors)
+
+        # Shared-weights box
+        theta_box = Rectangle(width=2.2, height=0.6, color=YELLOW, fill_opacity=0.15)
+        theta_box.move_to([x_cnn, top_y + 1.1, 0])
+        theta_text = Text("Shared weights θ", font_size=22).move_to(theta_box.get_center())
+
+        lane_groups = VGroup()
+        weight_lines = VGroup()
+        out_arrows = VGroup()
+        out_feats = VGroup()
+        signal_arrows = VGroup()
+
+        shared_feats = data_loader.model_features.get('shared_features', None)
+
+        for i in range(lanes_to_show):
+            y = anchors[i][1]
+            start_x = anchors[i][0]
+
+            # Special 5th lane: dots between CNN blocks (mirror the left dots row)
+            if i == 4:
+                dots_between_cnn = VGroup()
+                for k in range(3):
+                    dot = Dot(color=YELLOW, radius=0.08)
+                    dot.move_to([x_cnn, y - 0.3 + k * 0.15, 0])
+                    dots_between_cnn.add(dot)
+                lane_groups.add(dots_between_cnn)
+                continue
+
+            # CNN block
+            cnn_block = Rectangle(width=1.6, height=0.45, color=GREEN, fill_opacity=0.85)
+            cnn_block.move_to([x_cnn, y, 0])
+            cnn_label = Text("CNN", font_size=18, color=WHITE).move_to(cnn_block.get_center())
+
+            # Arrow FROM the actual plot/dots row TO the CNN
+            signal_to_cnn = Arrow(
+                start=[start_x + 0.1, y, 0], end=[x_cnn - 0.9, y, 0],
+                color=WHITE, stroke_width=2, max_tip_length_to_length_ratio=0.1
+            )
+
+            # Arrow CNN → output
+            to_out = Arrow(
+                start=[x_cnn + 0.9, y, 0], end=[x_out - 0.6, y, 0],
+                color=WHITE, stroke_width=2, max_tip_length_to_length_ratio=0.1
+            )
+
+            # Output feature box (64-dim)
+            feat = Rectangle(width=0.7, height=0.35, color=ORANGE, fill_opacity=0.8).move_to([x_out, y, 0])
+            feat_text = Text("64", font_size=16).move_to(feat.get_center())
+
+            if shared_feats is not None and i < len(shared_feats):
+                val = float(np.mean(shared_feats[i]))
+                feat.set_fill(ORANGE, opacity=0.35 + 0.45 * min(1.0, abs(val) / 2.0))
+
+            # Shared-weights dashed line
+            wline = DashedLine(theta_box.get_bottom(), cnn_block.get_top(), dash_length=0.12, color=YELLOW)
+
+            signal_arrows.add(signal_to_cnn)
+            lane_groups.add(VGroup(cnn_block, cnn_label))
+            weight_lines.add(wline)
+            out_arrows.add(to_out)
+            out_feats.add(VGroup(feat, feat_text))
+
+        lanes_label = Text("×50 lanes in parallel (no mixing)", font_size=22)
+        lanes_label.next_to(out_feats, DOWN, buff=0.6)
+        out_label = Text("Per-signal feature vectors (64-dim each)", font_size=22)
+        out_label.next_to(out_feats, RIGHT, buff=0.4)
+
+        # Animate cleanly, in order
+        self.play(Create(theta_box), Write(theta_text), run_time=0.6)
+        self.play(LaggedStart(*[Create(a) for a in signal_arrows], lag_ratio=0.05), run_time=1.0)
+        self.play(LaggedStart(*[Create(g) for g in lane_groups], lag_ratio=0.05), run_time=1.2)
+        self.play(LaggedStart(*[Create(l) for l in weight_lines], lag_ratio=0.05), run_time=0.8)
+        self.play(LaggedStart(*[Create(a) for a in out_arrows], lag_ratio=0.05), run_time=0.6)
+        self.play(LaggedStart(*[Create(f) for f in out_feats], lag_ratio=0.05), run_time=0.8)
+        self.play(Write(lanes_label), Write(out_label), run_time=0.6)
+
+        for _ in range(2):
+            self.play(theta_box.animate.set_fill(opacity=0.25), run_time=0.25)
+            self.play(theta_box.animate.set_fill(opacity=0.15), run_time=0.25)
+
+        self.wait(3)
+
+    def show_parallel_feature_extraction_wrongone(self):
         # Move all signals to the left and make them BIGGER
         all_signals = VGroup(self.signal_plots, self.dots, self.dots_text, self.last_signals)
         self.play(all_signals.animate.scale(0.8).shift(LEFT * 4.5), run_time=2)
