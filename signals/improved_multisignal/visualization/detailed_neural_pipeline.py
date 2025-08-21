@@ -332,6 +332,96 @@ class SignalInputVisualization(Scene):
         self.last_signals = last_signals
 
     def show_parallel_feature_extraction(self):
+        all_signals = VGroup(self.signal_plots, self.dots, self.dots_text, self.last_signals)
+        self.play(all_signals.animate.scale(0.8).shift(LEFT * 4.5), run_time=2)
+
+        sources = [*self.signal_axes[:4], self.dots, *self.last_axes]  # 4 + dots + 2
+
+        right_edges = []
+        for s in sources:
+            if isinstance(s, Axes):
+                right_edges.append(s.get_edge_center(RIGHT))
+            else:
+                right_edges.append(self.dots.get_right())
+
+        max_right_x = max(p[0] for p in right_edges)
+        y_vals = [p[1] for p in right_edges]
+
+        cnn_w, cnn_h = 2.2, 0.45  # 1.6, 0.45
+        gap_in_to_cnn = 2.5 # 1.45
+        gap_cnn_to_out = 3.35  # 3.35
+        x_cnn = max_right_x + gap_in_to_cnn
+        x_out = x_cnn + gap_cnn_to_out
+
+        top_y = max(y_vals)
+        theta_box = Rectangle(width=2.2, height=0.6, color=YELLOW, fill_opacity=0.15).move_to([x_cnn, top_y + 1.0, 0])
+        theta_text = Text("Shared weights θ", font_size=22).move_to(theta_box.get_center())
+        self.play(Create(theta_box), Write(theta_text), run_time=0.6)
+
+        lane_groups = VGroup();
+        signal_arrows = VGroup();
+        weight_lines = VGroup();
+        out_arrows = VGroup();
+        out_feats = VGroup()
+        shared_feats = data_loader.model_features.get('shared_features', None)
+
+        for i, p in enumerate(right_edges):
+            sx, sy = float(p[0]), float(p[1])
+
+            if i == 4:  # mirror dots row
+                dots_between = VGroup(*[
+                    Dot(color=YELLOW, radius=0.08).move_to([x_cnn, sy - 0.3 + k * 0.15, 0]) for k in range(3)
+                ])
+                lane_groups.add(dots_between)
+                continue
+
+            cnn_block = Rectangle(width=cnn_w, height=cnn_h, color=GREEN, fill_opacity=0.85).move_to([x_cnn, sy, 0])
+            # cnn_label = Text("CNN", font_size=18, color=WHITE).move_to(cnn_block.get_center())
+            cnn_label = Text("CNN block \n Feature extraction", font_size=16, color=WHITE).move_to(
+                cnn_block.get_center())
+
+            a_in = Arrow(start=[sx + 0.06, sy, 0], end=[x_cnn - cnn_w / 2 - 0.12, sy, 0],
+                         color=WHITE, stroke_width=2, max_tip_length_to_length_ratio=0.1)
+            wline = DashedLine(theta_box.get_bottom(), cnn_block.get_top(), dash_length=0.12, color=YELLOW)
+            a_out = Arrow(start=[x_cnn + cnn_w / 2 + 0.12, sy, 0], end=[x_out - 0.6, sy, 0],
+                          color=WHITE, stroke_width=2, max_tip_length_to_length_ratio=0.1)
+
+            feat = Rectangle(width=0.7, height=0.35, color=ORANGE, fill_opacity=0.8).move_to([x_out, sy, 0])
+            feat_text = Text("64", font_size=16).move_to(feat.get_center())
+
+            if shared_feats is not None and i < len(shared_feats):
+                val = float(np.mean(shared_feats[i]))
+                feat.set_fill(ORANGE, opacity=0.35 + 0.45 * min(1.0, abs(val) / 2.0))
+
+            signal_arrows.add(a_in);
+            lane_groups.add(VGroup(cnn_block, cnn_label));
+            weight_lines.add(wline)
+            out_arrows.add(a_out);
+            out_feats.add(VGroup(feat, feat_text))
+
+        lanes_label = Text("50 signals processed in parallel (no mixing)", font_size=22).next_to(out_feats, DOWN, buff=0.6)
+        # lanes_label.next_to(out_feats, LEFT+DOWN, buff=0.6)  # absolute move_to [-2, -3, 0]
+        # lanes_label.shift(LEFT*2.0 + DOWN*0.5)
+        lanes_label.move_to([0, -3.5, 0])  # (x, y, z)
+        # out_label = Text("Per-signal features (64-D)", font_size=22).next_to(out_feats, RIGHT, buff=0.35)
+        out_label = Text("Each signal → \n→ feature vector of 64 values", font_size=20).next_to(out_feats, RIGHT, buff=0.25)
+
+        self.play(LaggedStart(*[Create(a) for a in signal_arrows], lag_ratio=0.05), run_time=1.0)
+        self.play(LaggedStart(*[Create(g) for g in lane_groups], lag_ratio=0.05), run_time=1.2)
+        self.play(LaggedStart(*[Create(l) for l in weight_lines], lag_ratio=0.05), run_time=0.8)
+        self.play(LaggedStart(*[Create(a) for a in out_arrows], lag_ratio=0.05), run_time=0.6)
+        self.play(LaggedStart(*[Create(f) for f in out_feats], lag_ratio=0.05), run_time=0.8)
+        self.play(Write(lanes_label), Write(out_label), run_time=0.6)
+
+        for _ in range(2):
+            self.play(theta_box.animate.set_fill(opacity=0.25), run_time=0.25)
+            self.play(theta_box.animate.set_fill(opacity=0.15), run_time=0.25)
+
+        self.wait(3)
+
+
+'''
+    def show_parallel_feature_extraction2(self):
         # Move all signals left (keep your values)
         all_signals = VGroup(self.signal_plots, self.dots, self.dots_text, self.last_signals)
         self.play(all_signals.animate.scale(0.8).shift(LEFT * 4.5), run_time=2)
@@ -343,8 +433,8 @@ class SignalInputVisualization(Scene):
         lanes_to_show = len(anchors)  # 6
 
         # Layout
-        x_cnn = 1.2
-        x_out = 4.8
+        x_cnn = 1.7  # 1.2
+        x_out = 5.3  # 4.8
         top_y = max(p[1] for p in anchors)
 
         # Shared-weights box
@@ -375,9 +465,10 @@ class SignalInputVisualization(Scene):
                 continue
 
             # CNN block
-            cnn_block = Rectangle(width=1.6, height=0.45, color=GREEN, fill_opacity=0.85)
+            cnn_block = Rectangle(width=3.6, height=1.25, color=GREEN, fill_opacity=0.85)
             cnn_block.move_to([x_cnn, y, 0])
-            cnn_label = Text("CNN", font_size=18, color=WHITE).move_to(cnn_block.get_center())
+            # cnn_label = Text("CNN", font_size=18, color=WHITE).move_to(cnn_block.get_center())
+            cnn_label = Text("CNN block \n Feature extraction", font_size=16, color=WHITE).move_to(cnn_block.get_center())
 
             # Arrow FROM the actual plot/dots row TO the CNN
             signal_to_cnn = Arrow(
@@ -542,3 +633,5 @@ class SignalInputVisualization(Scene):
             self.play(theta_box.animate.set_fill(opacity=0.15), run_time=0.25)
 
         self.wait(3)
+        
+'''
