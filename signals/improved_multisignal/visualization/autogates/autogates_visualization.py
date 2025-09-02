@@ -11,6 +11,11 @@ MEAN_X   = -0.5           # mean/d1/d2 “evolving” column stays here
 D1_X     =  2.8           # first derivative column
 D2_X     =  5.7           # second derivative column
 
+
+def yflip(y, H):
+    """Map row index y (0=top in D-scan) to plot coords (0=bottom -> top)."""
+    return H - 1 - int(y)
+
 def nice_step(xmax: float, target_ticks: int = 5) -> float:
     """Nice tick step for Axes (1-2-5 progression)."""
     if xmax <= 0:
@@ -196,14 +201,17 @@ class AutoGateExplainer(Scene):
         label_mean.next_to(prof_axes, UP, buff=0.25)
         self.add(label_mean)  # or self.play(FadeIn(label_mean, shift=UP, run_time=0.3))
 
-        pts_prof = [prof_axes.c2p(float(prof[y]), float(y)) for y in range(H)]
+        pts_prof = [prof_axes.c2p(float(prof[y]), float(yflip(y, H))) for y in range(H)]
         prof_curve = VMobject(color=WHITE, stroke_width=3).set_points_smoothly(pts_prof[:2])
 
         # Dot that tracks sweep on the mean curve
         dot = Dot(color=YELLOW, radius=0.06)
+
         def _dot_updater(mob):
             y = int(np.clip(row_tracker.get_value(), 0, H - 1))
-            mob.move_to(prof_axes.c2p(float(prof[y]), float(y)))
+            mob.move_to(prof_axes.c2p(float(prof[y]), float(yflip(y, H))))
+
+
         dot.add_updater(_dot_updater)
 
         self.play(Create(prof_axes), run_time=0.5)
@@ -232,7 +240,7 @@ class AutoGateExplainer(Scene):
         self.add(label_d1)
 
         d1_curve = VMobject(color=BLUE, stroke_width=3).set_points_smoothly(
-            [d1_axes.c2p(float(d1[y]), float(y)) for y in range(H)]
+            [d1_axes.c2p(float(d1[y]), float(yflip(y, H))) for y in range(H)]
         )
         self.play(prof_group.animate.scale(0.95).shift(LEFT * 0.15), run_time=0.4)
         self.play(Create(d1_axes),  run_time=1.2, rate_func=linear)
@@ -253,7 +261,7 @@ class AutoGateExplainer(Scene):
         self.add(label_d2)
 
         d2_curve = VMobject(color=YELLOW, stroke_width=3).set_points_smoothly(
-            [d2_axes.c2p(float(d2[y]), float(y)) for y in range(H)]
+            [d2_axes.c2p(float(d2[y]), float(yflip(y, H))) for y in range(H)]
         )
 
         # Small arrows showing “→ derivative → derivative”
@@ -286,11 +294,23 @@ class AutoGateExplainer(Scene):
         # Gate boxes on d2 panel
         gate_boxes_d2 = VGroup()
         for (y0, y1) in peaks:
+            # compute height of the band in axis coordinates
+            h = (y1 - y0 + 1) * (
+                    d2_axes.y_length / (d2_axes.y_range[1] - d2_axes.y_range[0])
+            )
+
+            # center row (plot space uses flipped y)
             y_mid = 0.5 * (y0 + y1)
-            h = (y1 - y0 + 1) * (d2_axes.y_length / (d2_axes.y_range[1] - d2_axes.y_range[0]))
-            band = Rectangle(width=d2_axes.x_length, height=h, stroke_width=0,
-                             fill_color=GREEN, fill_opacity=0.52)
-            band.move_to(d2_axes.c2p(0, y_mid), aligned_edge=LEFT)
+            y_mid_plot = yflip(y_mid, H)
+
+            band = Rectangle(
+                width=d2_axes.x_length,
+                height=h,
+                stroke_width=0,
+                fill_color=GREEN,
+                fill_opacity=0.52,
+            )
+            band.move_to(d2_axes.c2p(0, y_mid_plot), aligned_edge=LEFT)
             gate_boxes_d2.add(band)
         self.play(FadeIn(gate_boxes_d2, lag_ratio=0.1), run_time=1.2)
 
