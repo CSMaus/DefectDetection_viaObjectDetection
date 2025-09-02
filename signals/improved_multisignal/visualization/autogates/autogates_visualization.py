@@ -4,6 +4,12 @@ import numpy as np
 from PIL import Image
 from matplotlib import colormaps
 
+# ---- absolute layout anchors (in scene coords) ----
+CENTER_Y = -0.1           # vertical center for all three axes
+HEAT_X   = -5.4           # D-scan center x (left column)
+MEAN_X   = -0.5           # mean/d1/d2 “evolving” column stays here
+D1_X     =  2.8           # first derivative column
+D2_X     =  5.7           # second derivative column
 
 def nice_step(xmax: float, target_ticks: int = 5) -> float:
     """Nice tick step for Axes (1-2-5 progression)."""
@@ -139,162 +145,169 @@ def _array_to_colormap_image(a, cmap_name="turbo"):
     return Image.fromarray(rgb)
 
 
+
 class AutoGateExplainer(Scene):
-    """
-    Pipeline animation (no long text):
-    1) Show D-scan heatmap (rainbow).
-    2) Animate row-wise reduction to 1-D mean profile (right panel).
-    3) Transform profile -> 1st derivative.
-    4) Transform -> 2nd derivative.
-    5) Zoom 2nd derivative, draw 1/4 max threshold, highlight gates.
-    """
     def construct(self):
         # ---------- data ----------
-        H, W = 80, 300  # as requested: ~300 x 80 (width x height)
+        H, W = 150, 250
         dscan = synth_dscan(height=H, width=W, band_rows=(12, 62), seed=7)
 
-        # ---------- D-scan heatmap ----------
+        # ---------- D-scan heatmap (narrower) ----------
         img = _array_to_colormap_image(dscan, cmap_name="turbo")
         heat = ImageMobject(img)
-        heat.width = 5.8
+        heat.width = 4.5
         heat.to_edge(LEFT, buff=0.7)
 
-        title = Text("D-scan", font_size=32)
-        title.next_to(heat, UP)
-
+        title = Text("D-scan", font_size=32).next_to(heat, UP)
         self.play(FadeIn(heat, shift=DOWN), FadeIn(title, shift=DOWN), run_time=0.9)
-        self.wait(0.4)
 
-        # ---------- mean profile axes (right) ----------
-        prof = row_statistic(dscan, mode="mean")  # or "running_max_avg" if that’s what you want to show
-        x_max = float(np.max(prof)) * 1.1
-        x_step = nice_step(x_max)
+        # --- linkage: sweep down the D-scan while we build the mean curve ---
+        row_tracker = ValueTracker(0)
 
-        prof_axes = Axes(
-            x_range=[0, x_max, x_step], # <-- valid positive step
-            y_range=[0, H, max(1, H // 4)],
-            x_length=4.6, y_length=5.0,
-            axis_config={"stroke_width": 2}
-        )
-        prof_axes.to_edge(RIGHT, buff=0.8)
-        self.play(Create(prof_axes), run_time=0.6)
-
-        # Animated “row sweeping” indicator on D-scan
-        row_tracker = ValueTracker(0)  # 0 .. H-1
-
-        def row_center_y(r: float):
+        def _row_center_y(r: float):
             top = heat.get_top()
             return top + DOWN * ((r + 0.5) / H) * heat.height
 
-        sweep = always_redraw(
-            lambda: Rectangle(
-                width=heat.width,
-                height=heat.height / H,
-                stroke_color=YELLOW,
-                fill_color=YELLOW,
-                fill_opacity=0.08,
-                stroke_width=2,
-            ).move_to(row_center_y(row_tracker.get_value()))
+        sweep = always_redraw(lambda:
+            Rectangle(
+                width=heat.width, height=heat.height / H,
+                stroke_color=YELLOW, fill_color=YELLOW, fill_opacity=0.08, stroke_width=2
+            ).move_to(_row_center_y(row_tracker.get_value()))
         )
         self.add(sweep)
 
-        # one full pass, top → bottom
-        self.play(row_tracker.animate.set_value(H - 1), run_time=1.8, rate_func=linear)
-
-        # Compute profile (mean across x)
+        # === right-side panels: mean, d1, d2 (all stay visible) ===
         prof = row_statistic(dscan, mode="mean")
-        x_max = float(np.max(prof)) * 1.1
-        # prof_axes.x_axis.set_range(0, x_max, 0.0)  # lead to the errror
+        x_max_prof = float(np.max(prof)) * 1.1
+        x_step_prof = nice_step(x_max_prof)
 
-        # Build the polyline progressively (y from 0..H-1)
-        prof_curve = VMobject(stroke_color=WHITE, stroke_width=3)
-        pts = []
-        for y in range(H):
-            x = prof[y]
-            px, py = prof_axes.c2p(x, y)[:2]
-            pts.append(np.array([px, py, 0.0]))
-        prof_curve.set_points_smoothly(pts[:2])
+        panel_left = heat.get_right() + RIGHT * 0.4
+        col_gap = 0.6
+        ax_w, ax_h = 2.5, 4.0
 
-        # Link a moving dot from sweep to the current profile point
+        prof_axes = Axes(
+            x_range=[0, x_max_prof, x_step_prof],
+            y_range=[0, H, max(1, H // 4)],
+            x_length=ax_w, y_length=ax_h,
+            axis_config={"stroke_width": 2},
+        )
+        prof_axes.move_to([MEAN_X, CENTER_Y, 0])  # <-- FIXED POSITION
+        label_mean = Text("Accumulated mean", font_size=24)
+        label_mean.next_to(prof_axes, UP, buff=0.25)
+        self.add(label_mean)  # or self.play(FadeIn(label_mean, shift=UP, run_time=0.3))
+
+        pts_prof = [prof_axes.c2p(float(prof[y]), float(y)) for y in range(H)]
+        prof_curve = VMobject(color=WHITE, stroke_width=3).set_points_smoothly(pts_prof[:2])
+
+        # Dot that tracks sweep on the mean curve
         dot = Dot(color=YELLOW, radius=0.06)
-        def dot_updater(mob):
-            y = int(self.sweep_row)
-            y = max(0, min(H-1, y))
-            x = prof[y]
-            mob.move_to(prof_axes.c2p(x, y))
-        dot.add_updater(dot_updater)
+        def _dot_updater(mob):
+            y = int(np.clip(row_tracker.get_value(), 0, H - 1))
+            mob.move_to(prof_axes.c2p(float(prof[y]), float(y)))
+        dot.add_updater(_dot_updater)
 
+        self.play(Create(prof_axes), run_time=0.5)
         self.add(dot)
 
-        # Animate sweep + curve growth
-        for y in range(2, H + 1, max(1, H // 20)):
-            self.sweep_row = min(H - 1, y - 1)
-            prof_curve.set_points_smoothly(pts[:y])
-            self.play(Create(prof_curve.copy().set_opacity(0.0)), run_time=0.05)  # tick
-        self.remove(sweep, dot)
-        self.play(Create(prof_curve), run_time=0.4)
-        self.wait(0.3)
+        # Animate sweep + grow mean curve
+        for y in range(2, H + 1, max(1, H // 18)):
+            row_tracker.set_value(min(H - 1, y - 1))
+            prof_curve.set_points_smoothly(pts_prof[:y])
+            self.play(Create(prof_curve.copy().set_opacity(0.0)), run_time=0.05)
+        self.play(Create(prof_curve), run_time=0.3)
+        prof_group = VGroup(prof_axes, prof_curve)
 
-        # ---------- first derivative ----------
-        d1, d2 = gradients_1st_2nd(prof)
-        d1_curve = self._curve_from_profile(prof_axes, d1, color=BLUE_E)
-        arrow1 = Arrow(start=prof_axes.c2p(x_max*0.8, H*0.85),
-                       end=prof_axes.c2p(x_max*0.93, H*0.85),
-                       buff=0, stroke_width=3, color=BLUE_E)
-        self.play(GrowArrow(arrow1), Transform(prof_curve, d1_curve), run_time=0.8)
-        self.wait(0.2)
-
-        # ---------- second derivative ----------
-        d2_curve = self._curve_from_profile(prof_axes, d2, color=ORANGE)
-        arrow2 = Arrow(start=prof_axes.c2p(x_max*0.8, H*0.15),
-                       end=prof_axes.c2p(x_max*0.93, H*0.15),
-                       buff=0, stroke_width=3, color=ORANGE)
-        self.play(GrowArrow(arrow2), Transform(prof_curve, d2_curve), run_time=0.8)
-        self.wait(0.3)
-
-        # ---------- focus on 2nd derivative ----------
-        self.play(FadeOut(heat), FadeOut(title), FadeOut(arrow1), FadeOut(arrow2), run_time=0.5)
-        self.play(prof_axes.animate.scale(1.1).shift(LEFT*0.8), run_time=0.5)
-        self.wait(0.2)
-
-        # Threshold line at 1/4 max(d2)
-        thr = float(np.max(d2)) / 4.0 if d2.size else 0.0
-        x_thr = min(x_max, thr)
-        thr_line = DashedLine(
-            start=prof_axes.c2p(x_thr, 0),
-            end=prof_axes.c2p(x_thr, H),
-            dash_length=0.12, color=YELLOW
+        # 1st derivative (separate x-range, same y)
+        d1 = gradient_1d(prof)
+        x_max_d1 = max(1e-6, float(np.max(np.abs(d1))) * 1.1)
+        d1_axes = Axes(
+            x_range=[-x_max_d1, x_max_d1, nice_step(2 * x_max_d1)],
+            y_range=[0, H, max(1, H // 4)],
+            x_length=ax_w, y_length=ax_h,
+            axis_config={"stroke_width": 2},
         )
-        self.play(Create(thr_line), run_time=0.6)
+        d1_axes.move_to([D1_X, CENTER_Y, 0])  # <-- FIXED POSITION
+        label_d1 = Text("1st derivative", font_size=24)  # Text("Gradient (1st)"
+        label_d1.next_to(d1_axes, UP, buff=0.25)
+        self.add(label_d1)
 
-        # Gate regions (using your logic)
-        peaks, _, d2_full = find_peaks_by_second_derivative(prof)
-        gate_boxes = VGroup()
+        d1_curve = VMobject(color=BLUE, stroke_width=3).set_points_smoothly(
+            [d1_axes.c2p(float(d1[y]), float(y)) for y in range(H)]
+        )
+        self.play(prof_group.animate.scale(0.95).shift(LEFT * 0.15), run_time=0.4)
+        self.play(Create(d1_axes),  run_time=1.2, rate_func=linear)
+        self.play(Create(d1_curve),  run_time=1.6, rate_func=linear)
+
+        # 2nd derivative (clip negatives to 0)
+        d2 = np.clip(gradient_1d(d1), 0, None)
+        x_max_d2 = max(1e-6, float(np.max(d2)) * 1.1)
+        d2_axes = Axes(
+            x_range=[0, x_max_d2, nice_step(x_max_d2)],
+            y_range=[0, H, max(1, H // 4)],
+            x_length=ax_w, y_length=ax_h,
+            axis_config={"stroke_width": 2},
+        )
+        d2_axes.move_to([D2_X, CENTER_Y, 0])  # <-- FIXED POSITION
+        label_d2 = Text("2nd derivative", font_size=24)
+        label_d2.next_to(d2_axes, UP, buff=0.25)
+        self.add(label_d2)
+
+        d2_curve = VMobject(color=YELLOW, stroke_width=3).set_points_smoothly(
+            [d2_axes.c2p(float(d2[y]), float(y)) for y in range(H)]
+        )
+
+        # Small arrows showing “→ derivative → derivative”
+        step_arrow1 = Arrow(
+            start=[MEAN_X + ax_w / 2 + 0.25, CENTER_Y + 1.0, 0],
+            end=[D1_X - ax_w / 2 - 0.25, CENTER_Y + 1.0, 0],
+            buff=0.1, stroke_width=2, color=BLUE_E
+        )
+        step_arrow2 = Arrow(
+            start=[D1_X + ax_w / 2 + 0.25, CENTER_Y - 1.0, 0],
+            end=[D2_X - ax_w / 2 - 0.25, CENTER_Y - 1.0, 0],
+            buff=0.1, stroke_width=2, color=YELLOW
+        )
+        self.play(GrowArrow(step_arrow1), GrowArrow(step_arrow2), run_time=0.5)
+
+        self.play(Create(d2_axes), run_time=1.2, rate_func=linear)
+        self.play(Create(d2_curve), run_time=1.6, rate_func=linear)
+
+        # Threshold & gates **on the 2nd derivative first**
+        thr = float(np.max(d2)) / 4.0 if len(d2) else 0.0
+        thr_line = DashedLine(
+            start=d2_axes.c2p(thr, 0),
+            end=d2_axes.c2p(thr, H),
+            color=RED, dash_length=0.18, stroke_width=2,
+        )
+        self.play(Create(thr_line), run_time=0.9)
+
+        peaks, _, _ = find_peaks_by_second_derivative(prof)
+
+        # Gate boxes on d2 panel
+        gate_boxes_d2 = VGroup()
         for (y0, y1) in peaks:
-            r = Rectangle(
-                width=prof_axes.x_length,
-                height=(y1 - y0) * (prof_axes.y_length / (prof_axes.y_range[1] - prof_axes.y_range[0])),
-                stroke_width=0,
-                fill_color=GREEN,
-                fill_opacity=0.25
-            )
-            # center at mid y, left-aligned to axes x=0
             y_mid = 0.5 * (y0 + y1)
-            r.move_to(prof_axes.c2p(0, y_mid), aligned_edge=LEFT)
-            gate_boxes.add(r)
+            h = (y1 - y0 + 1) * (d2_axes.y_length / (d2_axes.y_range[1] - d2_axes.y_range[0]))
+            band = Rectangle(width=d2_axes.x_length, height=h, stroke_width=0,
+                             fill_color=GREEN, fill_opacity=0.52)
+            band.move_to(d2_axes.c2p(0, y_mid), aligned_edge=LEFT)
+            gate_boxes_d2.add(band)
+        self.play(FadeIn(gate_boxes_d2, lag_ratio=0.1), run_time=1.2)
 
-        if len(gate_boxes) > 0:
-            self.play(FadeIn(gate_boxes, lag_ratio=0.1), run_time=0.9)
-        self.wait(1.0)
+        # Mirror those gates back onto the D-scan
+        gate_bands_heat = VGroup()
+        for (y0, y1) in peaks:
+            band_h = ((y1 - y0 + 1) / H) * heat.height
+            y_mid = 0.5 * (y0 + y1)
+            y_center = heat.get_top() + DOWN * ((y_mid + 0.5) / H) * heat.height
+            band = Rectangle(
+                width=heat.width, height=band_h,
+                stroke_color=GREEN, stroke_width=2,
+                fill_color=GREEN, fill_opacity=0.45
+            ).move_to([heat.get_center()[0], y_center[1], 0])
+            gate_bands_heat.add(band)
 
-    # helper: make a smooth curve for a y-indexed profile
-    def _curve_from_profile(self, axes: Axes, profile: np.ndarray, color=WHITE):
-        H = len(profile)
-        pts = [axes.c2p(float(profile[y]), float(y)) for y in range(H)]
-        curve = VMobject(stroke_color=color, stroke_width=3)
-        if H >= 2:
-            curve.set_points_smoothly(np.array(pts))
-        else:
-            curve.set_points_as_corners(np.array(pts))
-        return curve
+        self.play(TransformFromCopy(gate_boxes_d2, gate_bands_heat), run_time=1.2)
+        self.wait(0.4)
+        self.remove(sweep)
 

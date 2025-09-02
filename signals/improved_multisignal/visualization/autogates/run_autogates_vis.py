@@ -15,13 +15,13 @@ def run_manim_scene(file_name, scene_name, quality="high_quality"):
     print("🎬 Running:", " ".join(cmd))
     try:
         subprocess.run(cmd, check=True, text=True)
-        print("✅ Done:", scene_name)
+        print("Done:", scene_name)
         return True
     except subprocess.CalledProcessError as e:
-        print("❌ Manim failed with return code:", e.returncode)
+        print("Manim failed with return code:", e.returncode)
         return False
     except FileNotFoundError:
-        print("❌ Manim not found. Install with: pip install manim")
+        print("Manim not found. Install with: pip install manim")
         return False
 
 def main():
@@ -36,9 +36,9 @@ def main():
 
     ok = run_manim_scene("autogates_visualization.py", "AutoGateExplainer", quality)
     if ok:
-        print("\n🎥 Output in: ./media/videos/autogates_visualization/")
+        print("\nOutput in: ./media/videos/autogates_visualization/")
     else:
-        print("\n⚠️  Generation failed.")
+        print("\nGeneration failed.")
 
 if __name__ == "__main__":
     main()
