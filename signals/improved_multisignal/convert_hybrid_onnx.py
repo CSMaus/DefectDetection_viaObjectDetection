@@ -45,8 +45,8 @@ model = HybridBinaryModel(
     num_transformer_layers=num_transformer_layers
 ).to(device)
 
-modelname = "HybridBinaryModel"
-attempt = "002"
-model_path = f'models/HybridBinaryModel_20250718_2100/best_detection.pth'  # UPDATE THIS PATH
+modelname = "HybridBinaryModel_pepero"
+attempt = "004"
+model_path = f'models/HybridBinaryModel_20251111_2059/best_detection.pth'  # UPDATE THIS PATH
 export_model_to_onnx(model, device, model_path,
                      f'models/{attempt}-{modelname}.onnx', signal_length, hidden_sizes, num_heads)
