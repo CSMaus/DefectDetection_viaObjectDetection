@@ -20,11 +20,11 @@ class LocalAttention(nn.Module):
     Local attention using convolutional layers to focus on neighboring signals.
     Increased kernel size for wider context window.
     """
-    def __init__(self, d_model, kernel_size=9):
+    def __init__(self, d_model, kernel_size=11):
         # Increased from 5 to kernel 11 for wider context
         super().__init__()
         self.local_conv = nn.Conv1d(in_channels=d_model, out_channels=d_model, kernel_size=kernel_size,
-                                    padding=3, groups=d_model)
+                                    padding=kernel_size//2, groups=d_model)
 
     def forward(self, x):
         # (batch, num_signals, d_model) -> (batch, d_model, num_signals)
@@ -53,11 +53,11 @@ class TransformerEncoder(nn.Module):
 
     def forward(self, x):
         # Self-attention with residual connection and normalization
-        # attn_out, _ = self.self_attn(x, x, x)
-        # x = self.norm1(x + self.dropout(attn_out))
-        xa = self.norm1(x)
-        attn_out, _ = self.self_attn(xa, xa, xa, need_weights=False)
-        x = x + self.dropout(attn_out)
+        attn_out, _ = self.self_attn(x, x, x)
+        x = self.norm1(x + self.dropout(attn_out))
+        # xa = self.norm1(x)
+        # attn_out, _ = self.self_attn(xa, xa, xa, need_weights=False)
+        # x = x + self.dropout(attn_out)
         
         # Local attention with residual connection and normalization
         local_attn_out = self.local_attn(x)
