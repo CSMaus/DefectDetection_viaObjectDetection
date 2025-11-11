@@ -7,7 +7,8 @@ import math
 class RelativePositionEncoding(nn.Module):
     def __init__(self, max_len, d_model):
         super().__init__()
-        self.encoding = nn.Parameter(torch.randn(max_len, d_model)*0.2)
+        self.encoding = nn.Parameter(torch.randn(max_len, d_model) * 0.05)
+        self.pe_scale = nn.Parameter(torch.tensor(0.10))
 
     def forward(self, x):
         batch_size, num_signals, hidden_dim = x.shape
@@ -20,7 +21,7 @@ class LocalAttention(nn.Module):
     Local attention using convolutional layers to focus on neighboring signals.
     Increased kernel size for wider context window.
     """
-    def __init__(self, d_model, kernel_size=5):
+    def __init__(self, d_model, kernel_size=9):
         # Increased from 5 to kernel 9 for wider context
         super().__init__()
         self.local_conv = nn.Conv1d(in_channels=d_model, out_channels=d_model, kernel_size=kernel_size,
@@ -35,7 +36,7 @@ class LocalAttention(nn.Module):
 
 
 class TransformerEncoder(nn.Module):
-    def __init__(self, d_model, num_heads, ff_hidden_dim, dropout=0.1):
+    def __init__(self, d_model, num_heads, ff_hidden_dim, dropout=0.05):
         super().__init__()
         self.self_attn = nn.MultiheadAttention(d_model, num_heads, batch_first=True, dropout=dropout)
         self.local_attn = LocalAttention(d_model)
@@ -56,8 +57,8 @@ class TransformerEncoder(nn.Module):
         # attn_out, _ = self.self_attn(x, x, x)
         # x = self.norm1(x + self.dropout(attn_out))
         xa = self.norm1(x)
-        attn_out, _ = self.self_attn(xa, xa, xa)
-        x = x + attn_out
+        attn_out, _ = self.self_attn(xa, xa, xa, need_weights=False)
+        x = self.norm1(x + self.dropout(attn_out))
         
         # Local attention with residual connection and normalization
         local_attn_out = self.local_attn(x)

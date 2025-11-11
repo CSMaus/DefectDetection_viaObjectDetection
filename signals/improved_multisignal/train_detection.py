@@ -269,7 +269,7 @@ def main():
 
         best_acc, history = train_detection_model(
             model, train_loader, val_loader,
-            num_epochs=15, device=device, model_name=name, save_dir=main_models_dir
+            num_epochs=20, device=device, model_name=name, save_dir=main_models_dir
         )
 
         results[name] = best_acc
@@ -288,7 +288,7 @@ def main():
         'results': results,
         'histories': all_histories,
         'device': str(device),
-        'total_epochs': 15
+        'total_epochs': 20
     }
 
     results_path = os.path.join(main_models_dir, f"detection_training_results_{timestamp}.json")
