@@ -18,6 +18,7 @@ from detection_models.direct_defect import DirectDefectModel
 from detection_models.hybrid_binary import HybridBinaryModel
 
 from defect_focused_dataset import get_defect_focused_dataloader
+# from defect_focused_dataset_aug import get_defect_focused_dataloader
 
 
 def plot_training_history(history, save_path=None):
@@ -232,12 +233,15 @@ def main():
 
     # Load data
     train_loader, val_loader = get_defect_focused_dataloader(
-        "json_data_0718",  # "json_data_0717",  # "json_data_0716/",  # "json_data_all"
+        "json_data_0717",
+        # "json_data_0718",  # "json_data_0717",  # "json_data_0716/",  # "json_data_all"
         batch_size=8,
         seq_length=50,  # 30,
         shuffle=True,
-        validation_split=0.2,
-        min_defects_per_sequence=1
+        validation_split=0.15,
+        min_defects_per_sequence=1,
+        # isOnlyDefective=True,
+        # augment_uniform_pad_lengths=[320]
     )
 
     models = {
