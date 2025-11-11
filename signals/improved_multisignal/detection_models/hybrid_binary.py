@@ -26,11 +26,18 @@ class LocalAttention(nn.Module):
         self.local_conv = nn.Conv1d(in_channels=d_model, out_channels=d_model, kernel_size=kernel_size,
                                     padding=kernel_size//2, groups=d_model)
 
+        # self.alpha = nn.Parameter(torch.tensor(0.5))  # may help for local context
+
     def forward(self, x):
         # (batch, num_signals, d_model) -> (batch, d_model, num_signals)
+        # x = x - x.mean(dim=1, keepdim=True)  # should I remove mean to "reduce" background?
         x = x.permute(0, 2, 1)
-        x = self.local_conv(x)  # Apply depth-wise convolution
-        x = x.permute(0, 2, 1)  # Back to (batch, num_signals, d_model)
+        x = self.local_conv(x)  #  depth-wise convolution
+        x = x.permute(0, 2, 1)  # (B, N, d_model)
+
+        # y = self.local_conv(x.permute(0,2,1)).permute(0,2,1)
+        #         return x + self.alpha * y
+
         return x
 
 
