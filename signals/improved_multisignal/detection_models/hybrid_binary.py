@@ -20,7 +20,7 @@ class LocalAttention(nn.Module):
     Local attention using convolutional layers to focus on neighboring signals.
     Increased kernel size for wider context window.
     """
-    def __init__(self, d_model, kernel_size=7):
+    def __init__(self, d_model, kernel_size=11):
         # Increased from 5 to kernel 11 for wider context
         super().__init__()
         self.local_conv = nn.Conv1d(in_channels=d_model, out_channels=d_model, kernel_size=kernel_size,
@@ -42,7 +42,7 @@ class LocalAttention(nn.Module):
 
 
 class TransformerEncoder(nn.Module):
-    def __init__(self, d_model, num_heads, ff_hidden_dim, dropout=0.05):
+    def __init__(self, d_model, num_heads, ff_hidden_dim, dropout=0.1):
         super().__init__()
         self.self_attn = nn.MultiheadAttention(d_model, num_heads, batch_first=True, dropout=dropout)
         self.local_attn = LocalAttention(d_model)
