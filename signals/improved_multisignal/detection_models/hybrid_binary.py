@@ -20,7 +20,7 @@ class LocalAttention(nn.Module):
     Local attention using convolutional layers to focus on neighboring signals.
     Increased kernel size for wider context window.
     """
-    def __init__(self, d_model, kernel_size=11):
+    def __init__(self, d_model, kernel_size=7):
         # Increased from 5 to kernel 11 for wider context
         super().__init__()
         self.local_conv = nn.Conv1d(in_channels=d_model, out_channels=d_model, kernel_size=kernel_size,
@@ -118,7 +118,8 @@ class HybridBinaryModel(nn.Module):
             nn.ReLU(),
         )
 
-        self.position_encoding = RelativePositionEncoding(max_len=300, d_model=hidden_sizes[1])
+        self.position_encoding = RelativePositionEncoding(max_len=800, d_model=hidden_sizes[1])
+        # need to check it to be larger so it could take very long sequences
         
         # stack transformers encoder layers
         self.transformer_layers = nn.ModuleList([
