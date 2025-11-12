@@ -17,8 +17,8 @@ from detection_models.enhanced_pattern import EnhancedPatternModel
 from detection_models.direct_defect import DirectDefectModel
 from detection_models.hybrid_binary import HybridBinaryModel
 
-from defect_focused_dataset import get_defect_focused_dataloader
-# from defect_focused_dataset_aug import get_defect_focused_dataloader
+# from defect_focused_dataset import get_defect_focused_dataloader
+from defect_focused_dataset_aug import get_defect_focused_dataloader
 
 
 def plot_training_history(history, save_path=None):
@@ -240,8 +240,8 @@ def main():
         shuffle=True,
         validation_split=0.15,
         min_defects_per_sequence=1,
-        # isOnlyDefective=True,
-        # augment_uniform_pad_lengths=[320]
+        isOnlyDefective=True,
+        augment_uniform_pad_lengths=[80, 160, 320]
     )
 
     models = {
