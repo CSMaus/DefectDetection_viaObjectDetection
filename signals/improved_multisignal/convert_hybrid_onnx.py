@@ -1,5 +1,5 @@
-# from detection_models.hybrid_binary import HybridBinaryModel
-from detection_models.hybrid_binary_dynamic import HybridBinaryModel
+from detection_models.hybrid_binary import HybridBinaryModel
+# from detection_models.hybrid_binary_dynamic import HybridBinaryModel
 
 import torch
 import os
@@ -50,7 +50,7 @@ model = HybridBinaryModel(
 ).to(device)
 
 modelname = "HybridBinaryModel"
-attempt = "013d"
-model_path = f'models/HybridBinaryModel_20251112_1902/best_detection.pth'
+attempt = "015"
+model_path = f'models/HybridBinaryModel_20251118_1751/best_detection.pth'
 export_model_to_onnx(model, device, model_path,
                      f'models/{attempt}-{modelname}.onnx', signal_length) # , hidden_sizes, num_heads)
