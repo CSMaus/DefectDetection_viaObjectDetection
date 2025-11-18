@@ -101,13 +101,12 @@ def train_detection_model(model, train_loader, val_loader, num_epochs, device, m
     os.makedirs(model_save_dir, exist_ok=True)
     print("Model save dir: ", model_save_dir)
 
-    optimizer = torch.optim.AdamW(model.parameters(), lr=0.0008, weight_decay=0.015)
-    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.7, patience=3)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=0.0006, weight_decay=0.015)
+    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.7, patience=2)
     criterion = nn.BCELoss()
 
     best_accuracy = 0.0
 
-    # Initialize training history
     history = {
         'epochs': [],
         'train_loss': [],
@@ -118,7 +117,6 @@ def train_detection_model(model, train_loader, val_loader, num_epochs, device, m
     }
 
     for epoch in range(num_epochs):
-        # Training
         model.train()
         train_loss = 0.0
         train_correct = 0
@@ -128,17 +126,14 @@ def train_detection_model(model, train_loader, val_loader, num_epochs, device, m
             signals = signals.to(device)
             labels = labels.to(device)
 
-            # Forward pass
             detection_prob = model(signals)
             loss = criterion(detection_prob, labels)
 
-            # Backward pass
             optimizer.zero_grad()
             loss.backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1)  # reduced gradient clipping
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1)
             optimizer.step()
 
-            # Statistics
             train_loss += loss.item()
             train_correct += ((detection_prob > 0.5) == (labels > 0.5)).sum().item()
             train_total += labels.numel()
@@ -146,7 +141,6 @@ def train_detection_model(model, train_loader, val_loader, num_epochs, device, m
         train_loss /= len(train_loader)
         train_accuracy = train_correct / train_total
 
-        # Validation
         model.eval()
         val_loss = 0.0
         val_correct = 0
@@ -170,7 +164,6 @@ def train_detection_model(model, train_loader, val_loader, num_epochs, device, m
         current_lr = optimizer.param_groups[0]['lr']
         scheduler.step(val_loss)
 
-        # Update history
         history['epochs'].append(epoch + 1)
         history['train_loss'].append(train_loss)
         history['train_accuracy'].append(train_accuracy)
@@ -183,7 +176,6 @@ def train_detection_model(model, train_loader, val_loader, num_epochs, device, m
         print(f"  Val:   Loss={val_loss:.4f}, Acc={val_accuracy:.4f}")
         print(f"  LR: {current_lr:.6f}")
 
-        # Save checkpoint every epoch
         checkpoint = {
             'epoch': epoch + 1,
             'model_state_dict': model.state_dict(),
@@ -196,11 +188,9 @@ def train_detection_model(model, train_loader, val_loader, num_epochs, device, m
             'history': history
         }
 
-        # Save epoch checkpoint
         epoch_checkpoint_path = os.path.join(model_save_dir, f"epoch_{epoch + 1:02d}_checkpoint.pth")
         torch.save(checkpoint, epoch_checkpoint_path)
 
-        # Save training history JSON
         history_path = os.path.join(model_save_dir, 'training_history.json')
         with open(history_path, 'w') as f:
             json.dump(history, f, indent=2)
@@ -227,7 +217,6 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
 
-    # Create main models directory
     main_models_dir = "models"
     os.makedirs(main_models_dir, exist_ok=True)
 
@@ -240,8 +229,8 @@ def main():
         shuffle=True,
         validation_split=0.15,
         min_defects_per_sequence=1,
-        isOnlyDefective=True,
-        augment_uniform_pad_lengths=[80, 160, 320]
+        isOnlyDefective=False,
+        augment_uniform_pad_lengths=[80, 320]
     )
 
     models = {
