@@ -42,7 +42,7 @@ class LocalAttention(nn.Module):
 
 
 class TransformerEncoder(nn.Module):
-    def __init__(self, d_model, num_heads, ff_hidden_dim, dropout=0.1):
+    def __init__(self, d_model, num_heads, ff_hidden_dim, dropout=0.15):
         super().__init__()
         self.self_attn = nn.MultiheadAttention(d_model, num_heads, batch_first=True, dropout=dropout)
         self.local_attn = LocalAttention(d_model)
@@ -82,7 +82,7 @@ class HybridBinaryModel(nn.Module):
     Hybrid model: improved_model transformer + direct_defect feature extraction
     Binary classification only (defect/no-defect)
     """
-    def __init__(self, signal_length=320, hidden_sizes=[256, 196, 64], num_heads=8, dropout=0.15, num_transformer_layers=4):
+    def __init__(self, signal_length=320, hidden_sizes=[256, 192, 64], num_heads=8, dropout=0.15, num_transformer_layers=4):
         super(HybridBinaryModel, self).__init__()
 
         # FEATURE EXTRACTION from direct_defect.py
@@ -118,7 +118,7 @@ class HybridBinaryModel(nn.Module):
             nn.ReLU(),
         )
 
-        self.position_encoding = RelativePositionEncoding(max_len=800, d_model=hidden_sizes[1])
+        self.position_encoding = RelativePositionEncoding(max_len=1200, d_model=hidden_sizes[1])
         # need to check it to be larger so it could take very long sequences
         
         # stack transformers encoder layers

@@ -43,7 +43,7 @@ class LocalAttention(nn.Module):
 
 
 class TransformerEncoder(nn.Module):
-    def __init__(self, d_model, num_heads, ff_hidden_dim, dropout=0.1):
+    def __init__(self, d_model, num_heads, ff_hidden_dim, dropout=0.15):
         super().__init__()
         # self.self_attn = nn.MultiheadAttention(d_model, num_heads, batch_first=True, dropout=dropout)
         self.self_attn = TinyMHA(d_model, num_heads, attn_drop=dropout, proj_drop=dropout)
@@ -113,7 +113,7 @@ class HybridBinaryModel(nn.Module):
     Binary classification only (defect/no-defect)
     """
 
-    def __init__(self, signal_length=320, hidden_sizes=[256, 128, 48], num_heads=8, dropout=0.05,
+    def __init__(self, signal_length=320, hidden_sizes=[256, 192, 48], num_heads=8, dropout=0.15,
                  num_transformer_layers=4):
         super(HybridBinaryModel, self).__init__()
 
@@ -147,7 +147,7 @@ class HybridBinaryModel(nn.Module):
             nn.ReLU(),
         )
 
-        self.position_encoding = RelativePositionEncoding(max_len=800, d_model=hidden_sizes[1])
+        self.position_encoding = RelativePositionEncoding(max_len=1200, d_model=hidden_sizes[1])
         # need to check it to be larger so it could take very long sequences
 
         self.transformer_layers = nn.ModuleList([

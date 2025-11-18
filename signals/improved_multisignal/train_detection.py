@@ -16,6 +16,7 @@ from detection_models.pattern_embedding import PatternEmbeddingModel
 from detection_models.enhanced_pattern import EnhancedPatternModel
 from detection_models.direct_defect import DirectDefectModel
 from detection_models.hybrid_binary import HybridBinaryModel
+# from detection_models.hybrid_binary_dynamic import HybridBinaryModel
 
 # from defect_focused_dataset import get_defect_focused_dataloader
 from defect_focused_dataset_aug import get_defect_focused_dataloader
