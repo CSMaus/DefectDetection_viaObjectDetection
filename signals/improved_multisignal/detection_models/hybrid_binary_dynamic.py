@@ -113,7 +113,7 @@ class HybridBinaryModel(nn.Module):
     Binary classification only (defect/no-defect)
     """
 
-    def __init__(self, signal_length=320, hidden_sizes=[256, 192, 48], num_heads=8, dropout=0.15,
+    def __init__(self, signal_length=320, hidden_sizes=[256, 192, 64], num_heads=8, dropout=0.15,
                  num_transformer_layers=4):
         super(HybridBinaryModel, self).__init__()
 
