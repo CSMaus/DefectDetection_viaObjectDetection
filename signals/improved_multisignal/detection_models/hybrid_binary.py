@@ -20,11 +20,13 @@ class LocalAttention(nn.Module):
     Local attention using convolutional layers to focus on neighboring signals.
     Increased kernel size for wider context window.
     """
-    def __init__(self, d_model, kernel_size=11):
+    def __init__(self, d_model, kernel_size=9, kernel_size2=5):
         # Increased from 5 to kernel 11 for wider context
         super().__init__()
         self.local_conv = nn.Conv1d(in_channels=d_model, out_channels=d_model, kernel_size=kernel_size,
                                     padding=kernel_size//2, groups=d_model)
+        self.local_conv2 = nn.Conv1d(in_channels=d_model, out_channels=d_model, kernel_size=kernel_size2,
+                                    padding=kernel_size2//2, groups=d_model)
 
         # self.alpha = nn.Parameter(torch.tensor(0.5))  # may help for local context
 
@@ -33,6 +35,7 @@ class LocalAttention(nn.Module):
         # x = x - x.mean(dim=1, keepdim=True)  # should I remove mean to "reduce" background?
         x = x.permute(0, 2, 1)
         x = self.local_conv(x)
+        x = self.local_conv2(x)
         x = x.permute(0, 2, 1)
 
         # y = self.local_conv(x.permute(0,2,1)).permute(0,2,1)

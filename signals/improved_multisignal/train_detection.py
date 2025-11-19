@@ -231,7 +231,7 @@ def main():
         validation_split=0.15,
         min_defects_per_sequence=1,
         isOnlyDefective=False,
-        # augment_uniform_pad_lengths=[80, 320]
+        augment_uniform_pad_lengths=[80, 320]
     )
 
     models = {
