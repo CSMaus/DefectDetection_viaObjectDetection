@@ -102,7 +102,7 @@ def train_detection_model(model, train_loader, val_loader, num_epochs, device, m
     os.makedirs(model_save_dir, exist_ok=True)
     print("Model save dir: ", model_save_dir)
 
-    optimizer = torch.optim.AdamW(model.parameters(), lr=0.0006, weight_decay=0.015)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=0.0008, weight_decay=0.015)
     scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.7, patience=2)
     criterion = nn.BCELoss()
 
@@ -231,7 +231,7 @@ def main():
         validation_split=0.15,
         min_defects_per_sequence=1,
         isOnlyDefective=False,
-        augment_uniform_pad_lengths=[80, 320]
+        # augment_uniform_pad_lengths=[80, 320]
     )
 
     models = {
