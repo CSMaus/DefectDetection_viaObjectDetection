@@ -20,7 +20,7 @@ class LocalAttention(nn.Module):
     Local attention using convolutional layers to focus on neighboring signals.
     Increased kernel size for wider context window.
     """
-    def __init__(self, d_model, kernel_size=9, kernel_size2=5):
+    def __init__(self, d_model, kernel_size=11, kernel_size2=5):
         # Increased from 5 to kernel 11 for wider context
         super().__init__()
         self.local_conv = nn.Conv1d(in_channels=d_model, out_channels=d_model, kernel_size=kernel_size,

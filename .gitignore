@@ -42,3 +42,4 @@
 /signals/improved_multisignal/visualization/media
 *.png
 signals/improved_multisignal/conversation_summary.md
+*.csv
