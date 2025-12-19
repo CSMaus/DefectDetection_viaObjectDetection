@@ -91,8 +91,8 @@ if __name__ == "__main__":
     ).to(device)
 
     modelname = "HybridBinaryModel"
-    attempt = "015d"
-    model_path = 'models/HybridBinaryModel_20251118_1751/best_detection.pth'
-    onnx_path = f"models/{attempt}-{modelname}.onnx"
+    attempt = "018d"
+    model_path = 'models/HybridBinaryModel_20251119_1627/best_detection.pth'
+    onnx_path = f"models/onnx/{attempt}-{modelname}.onnx"
 
     export_model_to_onnx(model, device, model_path, onnx_path, signal_length)
